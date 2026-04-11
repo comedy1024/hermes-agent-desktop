@@ -25,6 +25,9 @@ RUN apt-get update && apt-get install -y git && \
 # Install dependencies
 RUN npm ci
 
+# Install i18n dependency (added by our patches)
+RUN npm install next-intl@^4.9.1
+
 # Apply i18n patches - copy over modified files
 COPY patches/messages/ ./messages/
 COPY patches/i18n/ ./src/i18n/
