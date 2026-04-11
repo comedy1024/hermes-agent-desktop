@@ -1,0 +1,33 @@
+# Git
+.git
+.github
+
+# Documentation
+README.md
+LICENSE
+
+# Data directories
+data/
+hermes-data/
+
+# Environment
+.env
+.env.local
+
+# Editor
+.vscode/
+.idea/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.log
+
+# Pan UI source (built in CI)
+pan-ui-source/
+pan-ui-built/
+
+# Patches are needed for build, so don't ignore patches/

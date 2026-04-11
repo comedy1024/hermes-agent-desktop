@@ -1,0 +1,192 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { Pencil, Sparkles } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { CreateProfileDialog } from '@/features/profiles/components/create-profile-dialog';
+import { ProfileEditorDialog } from '@/features/profiles/components/profile-editor-dialog';
+import { useCreateProfile, useDeleteProfile, useProfiles, useUpdateProfile, useAiOptimizeProfile, useUpdateProfileConfig } from '@/features/profiles/api/use-profiles';
+import { PolicyPresetSelector } from '@/features/settings/components/policy-preset-selector';
+import { useRuntimeStatus } from '@/features/settings/api/use-runtime-status';
+import { useUIStore } from '@/lib/store/ui-store';
+
+export function ProfilesScreen() {
+  const t = useTranslations('profiles');
+  const { selectedProfileId, setSelectedProfileId } = useUIStore();
+  const profilesQuery = useProfiles();
+  const runtimeQuery = useRuntimeStatus();
+  const createProfile = useCreateProfile();
+  const updateProfile = useUpdateProfile();
+  const deleteProfile = useDeleteProfile();
+  const aiOptimize = useAiOptimizeProfile();
+  const updateConfig = useUpdateProfileConfig();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editorProfileId, setEditorProfileId] = useState<string | null>(null);
+
+  const profiles = profilesQuery.data ?? [];
+  const selectedProfile = useMemo(
+    () => profiles.find((profile) => profile.id === selectedProfileId) ?? profiles.find((profile) => profile.active) ?? profiles[0],
+    [profiles, selectedProfileId],
+  );
+
+  async function handleCreateWithAi(payload: { name: string; policyPreset?: 'safe-chat' | 'research' | 'builder' | 'full-power'; aiPurpose?: string }) {
+    await createProfile.mutateAsync({ name: payload.name, policyPreset: payload.policyPreset });
+    if (payload.aiPurpose?.trim()) {
+      try {
+        const result = await aiOptimize.mutateAsync({ profileId: payload.name, purpose: payload.aiPurpose, mode: 'create' });
+        if (result.suggestion && Object.keys(result.suggestion).length > 0) {
+          await updateConfig.mutateAsync({ profileId: payload.name, config: result.suggestion });
+        }
+      } catch {
+        // Non-fatal: profile is created, AI config is bonus
+      }
+    }
+    setDialogOpen(false);
+  }
+
+  return (
+    <div className="h-full overflow-y-auto space-y-6 p-4 lg:p-6 pb-8 lg:pb-10">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">{t('title')}</h1>
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{t('subtitle')}</p>
+        </div>
+        <button type="button" onClick={() => setDialogOpen(true)} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+          {t('createProfile')}
+        </button>
+      </div>
+
+      <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">{t('selectedPosture')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('selectedPostureDescription')}</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-border bg-background px-4 py-3">
+              <p className="text-xs uppercase tracking-label text-muted-foreground">{t('uiSelection')}</p>
+              <p className="mt-2 font-semibold">{selectedProfile?.name ?? t('noProfileSelected')}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background px-4 py-3">
+              <p className="text-xs uppercase tracking-label text-muted-foreground">{t('runtimeContext')}</p>
+              <p className="mt-2 font-semibold">{runtimeQuery.data?.profileContext?.label ?? runtimeQuery.data?.activeProfile ?? t('unknownRuntimeProfile')}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background px-4 py-3">
+              <p className="text-xs uppercase tracking-label text-muted-foreground">{t('profilesAvailable')}</p>
+              <p className="mt-2 font-semibold">{profiles.length}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background px-4 py-3">
+              <p className="text-xs uppercase tracking-label text-muted-foreground">{t('runtimeHealth')}</p>
+              <p className="mt-2 font-semibold">{selectedProfile?.runtimeHealth ?? 'offline'}</p>
+            </div>
+          </div>
+          {selectedProfile ? (
+            <div className="mt-4 rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">
+              <p><strong className="text-foreground">{t('policy')}:</strong> {selectedProfile.policyPreset ?? 'safe-chat'}</p>
+              <p><strong className="text-foreground">{t('model')}:</strong> {selectedProfile.modelDefault ?? 'n/a'}</p>
+              <p><strong className="text-foreground">{t('provider')}:</strong> {selectedProfile.runtimeProvider ?? 'unknown'}</p>
+              <p className="mt-2">{selectedProfile.runtimeSummary ?? t('noRuntimeSummary')}</p>
+            </div>
+          ) : null}
+        </div>
+
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">{t('scopeSemantics')}</h2>
+          <div className="mt-4 space-y-3 text-sm text-muted-foreground">
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="font-medium text-foreground">{t('profileRequery')}</p>
+              <p className="mt-1">{t('profileRequeryDescription')}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="font-medium text-foreground">{t('policyPresetsDefaults')}</p>
+              <p className="mt-1">{t('policyPresetsDefaultsDescription')}</p>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {profiles.map((profile) => {
+          const isSelected = selectedProfileId === profile.id;
+          const isRuntimeActive = profile.active;
+
+          return (
+            <div key={profile.id} className={`rounded-2xl border bg-card p-5 shadow-sm ${isSelected ? 'border-primary/50' : 'border-border'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">{profile.name}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">{profile.profileContextLabel || t('profileContextUnavailable')}</p>
+                </div>
+                <div className="flex flex-col items-end gap-2 text-xs">
+                  {isRuntimeActive ? <span className="rounded-full bg-success/15 px-2 py-1 text-foreground">{t('activeRuntime')}</span> : null}
+                  {isSelected ? <span className="rounded-full bg-primary/10 px-2 py-1 text-foreground">{t('selectedInUI')}</span> : null}
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-muted-foreground">
+                <p>{t('sessions')}: {profile.sessionCount ?? 0}</p>
+                <p>{t('skills')}: {profile.skillCount ?? 0}</p>
+                <p>{t('integrations')}: {profile.integrationsCount ?? profile.extensionCount ?? 0}</p>
+                <p>{t('runtime')}: {profile.runtimeHealth ?? 'offline'}</p>
+              </div>
+              <div className="mt-4 rounded-xl border border-border bg-background p-3 text-sm">
+                <p><strong>{t('model')}:</strong> {profile.modelDefault ?? 'n/a'}</p>
+                <p><strong>{t('trust')}:</strong> {profile.trustMode ?? profile.policyPreset ?? 'safe-chat'}</p>
+                <p><strong>{t('provider')}:</strong> {profile.runtimeProvider ?? 'unknown'}</p>
+                <p className="mt-2 text-muted-foreground">{profile.runtimeSummary ?? t('noRuntimeSummary')}</p>
+              </div>
+              <div className="mt-4">
+                <label className="text-xs text-muted-foreground">{t('policyPreset')}</label>
+                <div className="mt-1">
+                  <PolicyPresetSelector
+                    value={profile.policyPreset ?? 'safe-chat'}
+                    onChange={(value) => void updateProfile.mutateAsync({ profileId: profile.id, policyPreset: value })}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditorProfileId(profile.id)}
+                  className="flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {t('edit')}
+                  <Sparkles className="h-3 w-3 text-purple-400" />
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setSelectedProfileId(profile.id);
+                    await updateProfile.mutateAsync({ profileId: profile.id, action: 'activate' });
+                  }}
+                  className="rounded-lg border border-border px-3 py-2 text-sm"
+                >
+                  {t('switch')}
+                </button>
+                <button type="button" onClick={() => void updateProfile.mutateAsync({ profileId: profile.id, action: 'clone' })} className="rounded-lg border border-border px-3 py-2 text-sm">
+                  {t('clone')}
+                </button>
+                <button type="button" onClick={() => void deleteProfile.mutateAsync(profile.id)} className="rounded-lg border border-border px-3 py-2 text-sm text-danger">
+                  {t('delete')}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <CreateProfileDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onSubmit={handleCreateWithAi}
+      />
+
+      {editorProfileId && (
+        <ProfileEditorDialog
+          profileId={editorProfileId}
+          profileName={profiles.find((p) => p.id === editorProfileId)?.name ?? editorProfileId}
+          open={!!editorProfileId}
+          onClose={() => setEditorProfileId(null)}
+        />
+      )}
+    </div>
+  );
+}

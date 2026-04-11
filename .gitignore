@@ -1,0 +1,25 @@
+# 本地数据目录
+data/
+hermes-data/
+
+# 环境变量
+.env
+.env.local
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.log
+
+# Pan UI 构建产物
+pan-ui-built/
+pan-ui-source/

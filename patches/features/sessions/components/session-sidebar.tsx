@@ -1,0 +1,279 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { Clock3, GitBranch, Pin, Play, Plus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { EmptyState, LoadingState } from '@/components/feedback/states';
+import { SessionSearch } from '@/features/sessions/components/session-search';
+import {
+  SESSION_SOURCES,
+  SessionSourceBadge,
+  getSourceMeta,
+} from '@/features/sessions/components/session-source-badge';
+import type { ChatSessionSummary, SessionSource } from '@/lib/types/chat';
+import { useUIStore } from '@/lib/store/ui-store';
+import { cn } from '@/lib/utils';
+
+type SessionSidebarProps = {
+  sessions: ChatSessionSummary[];
+  selectedSessionId: string | null;
+  search: string;
+  isLoading?: boolean;
+  onSearchChange: (value: string) => void;
+  onNewChat: () => void;
+  onSelectSession: (sessionId: string) => void;
+  onResumeSession?: (sessionId: string) => void;
+};
+
+type SourceFilter = SessionSource | 'all';
+
+function previewText(preview: string | null | undefined, noMessages: string) {
+  if (!preview) return noMessages;
+  return preview.length > 88 ? `${preview.slice(0, 85)}…` : preview;
+}
+
+function formatUpdatedAt(updatedAt: string) {
+  return new Date(updatedAt).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function sessionSource(session: ChatSessionSummary): SessionSource {
+  return session.source ?? 'unknown';
+}
+
+function isExternalSession(session: ChatSessionSummary): boolean {
+  const src = sessionSource(session);
+  return src !== 'webui' && src !== 'unknown';
+}
+
+export function SessionSidebar({
+  sessions,
+  selectedSessionId,
+  search,
+  isLoading,
+  onSearchChange,
+  onNewChat,
+  onSelectSession,
+  onResumeSession,
+}: SessionSidebarProps) {
+  const t = useTranslations('sessions');
+  const tc = useTranslations('common');
+  const PAGE_SIZE = 25;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const { sidebarCompact, toggleSidebarCompact } = useUIStore();
+
+  const availableSources = useMemo(() => {
+    const present = new Set<SessionSource>();
+    for (const s of sessions) present.add(sessionSource(s));
+    return SESSION_SOURCES.filter((src) => present.has(src));
+  }, [sessions]);
+
+  const showFilter = availableSources.length > 1;
+
+  const filteredSessions = useMemo(() => {
+    const base = search.trim() ? sessions.filter((s) => !s.parentSessionId) : sessions;
+    if (sourceFilter === 'all') return base;
+    return base.filter((s) => sessionSource(s) === sourceFilter);
+  }, [sessions, search, sourceFilter]);
+
+  const pinnedSessions = filteredSessions.filter((s) => s.pinned && !s.archived);
+  const recentSessions = filteredSessions.filter((s) => !s.pinned && !s.archived);
+  const archivedSessions = filteredSessions.filter((s) => s.archived);
+
+  const ARCHIVED_LIMIT = 5;
+  const [showAllArchived, setShowAllArchived] = useState(false);
+
+  const groups = [
+    { label: t('pinned'), items: pinnedSessions },
+    { label: t('recent'), items: recentSessions.slice(0, visibleCount) },
+    { label: t('archived'), items: showAllArchived ? archivedSessions : archivedSessions.slice(0, ARCHIVED_LIMIT) },
+  ].filter((group) => group.items.length > 0);
+
+  const hasMore = recentSessions.length > visibleCount;
+  const hasMoreArchived = !showAllArchived && archivedSessions.length > ARCHIVED_LIMIT;
+
+  return (
+    <aside className="flex h-full max-h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card/60 shadow-[var(--shadow-soft)]">
+      <div className={cn('border-b border-border/60', sidebarCompact ? 'p-3' : 'p-4')}>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-label text-muted-foreground">{t('chats')}</p>
+          <button
+            type="button"
+            onClick={toggleSidebarCompact}
+            className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-3xs font-medium uppercase tracking-label text-muted-foreground"
+          >
+            {sidebarCompact ? tc('comfort') : tc('compact')}
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={onNewChat}
+          className={cn(
+            'flex w-full items-center justify-center gap-2 rounded-lg brand-gradient text-sm font-semibold text-primary-foreground shadow-[var(--shadow-card)] transition hover:-translate-y-0.5',
+            sidebarCompact ? 'px-3 py-2.5' : 'px-4 py-3',
+          )}
+        >
+          <Plus className="h-4 w-4" />
+          {t('newChat')}
+        </button>
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+          {t('chatStats', { total: filteredSessions.length, pinned: pinnedSessions.length, archived: archivedSessions.length })}
+        </p>
+      </div>
+      <SessionSearch value={search} onChange={onSearchChange} />
+      {showFilter ? (
+        <div className={cn('border-b border-border/70 px-3', sidebarCompact ? 'pb-2' : 'pb-3')}>
+          <div className="mb-1.5 px-1 text-2xs font-semibold uppercase tracking-label text-muted-foreground">
+            {t('source')}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSourceFilter('all')}
+              className={cn(
+                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-3xs uppercase tracking-label transition',
+                sourceFilter === 'all'
+                  ? 'border-primary/60 bg-primary/15 text-primary'
+                  : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60',
+              )}
+            >
+              {t('all')}
+            </button>
+            {availableSources.map((src) => {
+              const meta = getSourceMeta(src);
+              const Icon = meta.icon;
+              const active = sourceFilter === src;
+              return (
+                <button
+                  key={src}
+                  type="button"
+                  onClick={() => setSourceFilter(src)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-3xs uppercase tracking-label transition',
+                    active
+                      ? meta.classes.replace('/10', '/20').replace('/40', '/60')
+                      : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60',
+                  )}
+                  title={meta.label}
+                >
+                  <Icon className="h-3 w-3" aria-hidden="true" />
+                  {meta.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <div className={cn('flex-1 overflow-y-auto', sidebarCompact ? 'space-y-3 p-2' : 'space-y-4 p-3')}>
+        {isLoading ? (
+          <LoadingState layout="banner" title={t('loadingChats')} />
+        ) : null}
+        {!isLoading && filteredSessions.length === 0 ? (
+          <EmptyState
+            layout="banner"
+            title={sourceFilter === 'all' ? t('noChatsFound') : t('noSourceChats', { source: getSourceMeta(sourceFilter).label })}
+            description={sourceFilter === 'all' ? t('noChatsFoundDescription') : t('noSourceChatsDescription')}
+          />
+        ) : null}
+        {groups.map((group) => (
+          <div key={group.label} className="space-y-2">
+            <div className="flex items-center justify-between px-2 text-2xs font-semibold uppercase tracking-label text-muted-foreground">
+              <span>{group.label}</span>
+              <span>{group.items.length}</span>
+            </div>
+            {group.items.map((session) => {
+              const external = isExternalSession(session);
+              const canResume = external && Boolean(onResumeSession);
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => onSelectSession(session.id)}
+                  aria-label={/\(fork\)/i.test(session.title) && selectedSessionId !== session.id ? session.title : `Open session ${session.id}`}
+                  className={cn(
+                    'w-full rounded-xl border text-left transition',
+                    sidebarCompact ? 'px-3 py-2.5' : 'px-4 py-3',
+                    selectedSessionId === session.id
+                      ? 'border-primary/30 bg-primary/10 shadow-[var(--shadow-card)] ring-1 ring-primary/10'
+                      : 'border-border/60 bg-background/70 hover:border-border/70 hover:bg-card/50',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p aria-hidden="true" className="truncate text-sm font-semibold text-foreground">{session.title}</p>
+                        {session.pinned ? <Pin className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /> : null}
+                        {session.parentSessionId ? <GitBranch className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /> : null}
+                      </div>
+                      <p aria-hidden="true" className={cn('mt-1 text-xs leading-5 text-muted-foreground', sidebarCompact ? 'line-clamp-1' : 'line-clamp-2')}>
+                        {previewText(session.preview, t('noMessagesYet'))}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <SessionSourceBadge source={sessionSource(session)} iconOnly={sidebarCompact} />
+                      {canResume && selectedSessionId === session.id ? (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onResumeSession?.(session.id);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onResumeSession?.(session.id);
+                            }
+                          }}
+                          aria-label={`${t('resume')} ${getSourceMeta(sessionSource(session)).label}`}
+                          className={cn(
+                            'inline-flex items-center rounded-full border border-primary/50 bg-primary/10 text-3xs uppercase tracking-label text-primary transition hover:bg-primary/20 cursor-pointer',
+                            sidebarCompact ? 'h-5 w-5 justify-center px-0 py-0' : 'gap-1 px-2 py-0.5',
+                          )}
+                        >
+                          <Play className="h-3 w-3" />
+                          {sidebarCompact ? null : t('resume')}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className={cn('flex items-center justify-between gap-2 text-2xs text-muted-foreground', sidebarCompact ? 'mt-2' : 'mt-3')}>
+                    <span className="inline-flex items-center gap-1">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      {formatUpdatedAt(session.updatedAt)}
+                    </span>
+                    {!sidebarCompact && session.workspaceLabel && selectedSessionId === session.id ? <span>{session.workspaceLabel}</span> : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+        {hasMore ? (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+            className="mx-2 mt-2 rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:bg-card"
+          >
+            {t('showMore')} ({recentSessions.length - visibleCount} {t('remaining')})
+          </button>
+        ) : null}
+        {hasMoreArchived ? (
+          <button
+            type="button"
+            onClick={() => setShowAllArchived(true)}
+            className="mx-2 mt-2 rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:bg-card"
+          >
+            {t('showAllArchived')} ({archivedSessions.length - ARCHIVED_LIMIT} {t('more')})
+          </button>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
