@@ -88,9 +88,11 @@ COPY --from=pan-ui-builder /build/.next/static /opt/pan-ui/.next/static
 COPY --from=pan-ui-builder /build/messages /opt/pan-ui/messages
 
 # Copy our configuration files
+# Rename base image's entrypoint so we can call it from supervisord
+RUN mv /entrypoint.sh /opt/openclaw-entrypoint.sh
 COPY supervisord.conf /etc/supervisor/conf.d/hermes.conf
 COPY entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/entrypoint.sh && \
+RUN chmod +x /opt/entrypoint.sh /opt/openclaw-entrypoint.sh && \
     mkdir -p /var/log/supervisor
 
 # Expose ports

@@ -50,7 +50,7 @@ echo "================================================"
 echo "  Services:"
 echo "  - noVNC Desktop:  http://localhost:7860"
 echo "  - Pan UI:         http://localhost:3199"
-echo "  - Hermes Gateway: http://localhost:8642"
+echo "  - Hermes Gateway: auto-managed by Pan UI (port 8642)"
 echo "================================================"
 
 # Start supervisord (manages all 3 services)
