@@ -57,13 +57,19 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
+    python3-dev \
     supervisor \
+    ripgrep \
+    ffmpeg \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Hermes Agent via pip
+# Install Hermes Agent from source (not on PyPI, must clone from GitHub)
 RUN python3 -m venv /opt/hermes-venv && \
-    /opt/hermes-venv/bin/pip install --no-cache-dir hermes-agent && \
-    ln -sf /opt/hermes-venv/bin/hermes /usr/local/bin/hermes
+    git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /tmp/hermes-agent && \
+    /opt/hermes-venv/bin/pip install --no-cache-dir "/tmp/hermes-agent[all]" && \
+    ln -sf /opt/hermes-venv/bin/hermes /usr/local/bin/hermes && \
+    rm -rf /tmp/hermes-agent
 
 # Set up Hermes data directory
 ENV HERMES_HOME=/opt/data
