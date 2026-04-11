@@ -1,83 +1,57 @@
 #!/bin/bash
+# ================================================================
+# hermes-agent-desktop entrypoint
+# Starts: noVNC desktop + Hermes Agent Gateway + Pan UI
+# All processes managed by supervisord
+# ================================================================
 set -e
 
-# ================================================================
-# hermes-agent-desktop Entrypoint
-# Starts: Linux Desktop (noVNC) + Hermes Agent Gateway + Pan UI
-# ================================================================
+HERMES_HOME="/opt/data"
+HERMES_INSTALL="/opt/hermes"
 
-HERMES_HOME="${HERMES_HOME:-/opt/data}"
-PAN_UI_PORT="${PAN_UI_PORT:-3199}"
-HERMES_GATEWAY_PORT="${HERMES_GATEWAY_PORT:-8642}"
-
-echo "============================================================"
+echo "================================================"
 echo "  hermes-agent-desktop"
-echo "  Hermes Agent + Pan UI (i18n) in Linux GUI Desktop"
-echo "============================================================"
-echo ""
-echo "  noVNC Desktop:  http://0.0.0.0:7860"
-echo "  Pan UI:         http://0.0.0.0:${PAN_UI_PORT}"
-echo "  Hermes Gateway: http://0.0.0.0:${HERMES_GATEWAY_PORT}"
-echo "  Data directory: ${HERMES_HOME}"
-echo ""
+echo "  Hermes Agent + Pan UI (i18n) in Linux GUI"
+echo "================================================"
 
-# Ensure data directory exists
-mkdir -p "${HERMES_HOME}"
-mkdir -p /var/log/supervisor
+# ---- Bootstrap Hermes Agent config (from official docker/entrypoint.sh) ----
+mkdir -p "$HERMES_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
 
-# Initialize Hermes config if not present
-if [ ! -f "${HERMES_HOME}/.env" ]; then
-    echo "[init] Creating default .env template..."
-    cat > "${HERMES_HOME}/.env" << 'ENVEOF'
-# Hermes Agent Configuration
-# Fill in your API keys below
-
-# LLM Provider Keys (uncomment and fill as needed)
-# OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
-# OPENROUTER_API_KEY=sk-or-...
-
-# Hermes settings
-HERMES_HOME=/opt/data
-HERMES_LOG_LEVEL=info
-ENVEOF
+# .env
+if [ ! -f "$HERMES_HOME/.env" ]; then
+    if [ -f "$HERMES_INSTALL/.env.example" ]; then
+        cp "$HERMES_INSTALL/.env.example" "$HERMES_HOME/.env"
+        echo "[hermes] Created .env from template"
+    fi
 fi
 
-if [ ! -f "${HERMES_HOME}/config.yaml" ]; then
-    echo "[init] Creating default config.yaml..."
-    cat > "${HERMES_HOME}/config.yaml" << 'YAMLEOF'
-# Hermes Agent Configuration
-# See: https://github.com/NousResearch/hermes-agent
-
-agent:
-  name: Pan
-  model_default: gpt-4o
-
-gateway:
-  host: 0.0.0.0
-  port: 8642
-
-memory:
-  mode: hybrid
-
-policy:
-  preset: safe-chat
-YAMLEOF
+# config.yaml
+if [ ! -f "$HERMES_HOME/config.yaml" ]; then
+    if [ -f "$HERMES_INSTALL/cli-config.yaml.example" ]; then
+        cp "$HERMES_INSTALL/cli-config.yaml.example" "$HERMES_HOME/config.yaml"
+        echo "[hermes] Created config.yaml from template"
+    fi
 fi
 
-# Create Pan UI .env if not present
-if [ ! -f "/opt/pan-ui/.env" ]; then
-    echo "[init] Creating Pan UI environment..."
-    cat > "/opt/pan-ui/.env" << 'PANEOF'
-HERMES_RUNTIME_URL=http://localhost:8642
-PAN_UI_HOST=0.0.0.0
-PAN_UI_PORT=3199
-NEXT_LOCALE=zh-CN
-PANEOF
+# SOUL.md
+if [ ! -f "$HERMES_HOME/SOUL.md" ]; then
+    if [ -f "$HERMES_INSTALL/docker/SOUL.md" ]; then
+        cp "$HERMES_INSTALL/docker/SOUL.md" "$HERMES_HOME/SOUL.md"
+        echo "[hermes] Created SOUL.md from template"
+    fi
 fi
 
-echo "[init] Starting all services via supervisord..."
-echo ""
+# Sync bundled skills
+if [ -d "$HERMES_INSTALL/skills" ] && [ -f "$HERMES_INSTALL/tools/skills_sync.py" ]; then
+    python3 "$HERMES_INSTALL/tools/skills_sync.py" 2>/dev/null || true
+fi
 
-# Start supervisord (manages all services)
+echo "================================================"
+echo "  Services:"
+echo "  - noVNC Desktop:  http://localhost:7860"
+echo "  - Pan UI:         http://localhost:3199"
+echo "  - Hermes Gateway: http://localhost:8642"
+echo "================================================"
+
+# Start supervisord (manages all 3 services)
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/hermes.conf

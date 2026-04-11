@@ -48,33 +48,37 @@ LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent
 LABEL org.opencontainers.image.description="Hermes Agent + Pan UI (i18n) in Linux GUI Desktop"
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
-# Install runtime dependencies
+# Install all system dependencies (matching official hermes-agent Dockerfile)
 USER root
-RUN apt-get update && apt-get install -y \
-    curl \
-    wget \
-    git \
-    python3 \
-    python3-pip \
-    python3-venv \
-    python3-dev \
-    supervisor \
-    ripgrep \
-    ffmpeg \
-    build-essential \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc \
+    python3 python3-pip python3-venv python3-dev \
+    libffi-dev ripgrep ffmpeg procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Hermes Agent from source (not on PyPI, must clone from GitHub)
-RUN python3 -m venv /opt/hermes-venv && \
-    git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /tmp/hermes-agent && \
-    /opt/hermes-venv/bin/pip install --no-cache-dir "/tmp/hermes-agent[all]" && \
-    ln -sf /opt/hermes-venv/bin/hermes /usr/local/bin/hermes && \
-    rm -rf /tmp/hermes-agent
+# Install uv for fast Python package management
+RUN pip install --no-cache-dir uv --break-system-packages
 
-# Set up Hermes data directory
+# Clone and install Hermes Agent (following official Dockerfile approach)
+# This is the slowest layer - split from Pan UI for better caching
+RUN git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
+    cd /opt/hermes && \
+    uv pip install --system --break-system-packages --no-cache -e ".[all]" && \
+    npm install --prefer-offline --no-audit && \
+    npx playwright install --with-deps chromium --only-shell && \
+    cd scripts/whatsapp-bridge && \
+    npm install --prefer-offline --no-audit && \
+    npm cache clean --force && \
+    rm -rf /root/.cache /root/.npm
+
+# Copy Hermes Agent docker config templates
+# (hermes entrypoint.sh will bootstrap config from these)
+RUN chmod +x /opt/hermes/docker/entrypoint.sh
+
+# Set up Hermes environment
 ENV HERMES_HOME=/opt/data
-RUN mkdir -p /opt/data && \
-    mkdir -p /opt/hermes
+ENV PYTHONUNBUFFERED=1
+RUN mkdir -p /opt/data
 
 # Copy built Pan UI from builder stage
 # Note: Pan UI has no public/ directory - static assets are in .next/static
@@ -83,7 +87,7 @@ COPY --from=pan-ui-builder /build/.next/static /opt/pan-ui/.next/static
 # messages/ contains i18n translation files needed at runtime by next-intl
 COPY --from=pan-ui-builder /build/messages /opt/pan-ui/messages
 
-# Copy configuration files
+# Copy our configuration files
 COPY supervisord.conf /etc/supervisor/conf.d/hermes.conf
 COPY entrypoint.sh /opt/entrypoint.sh
 RUN chmod +x /opt/entrypoint.sh
@@ -99,6 +103,6 @@ VOLUME ["/opt/data"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:3199/api/runtime/health || exit 1
+    CMD curl -f http://localhost:3199/ || exit 1
 
 ENTRYPOINT ["/opt/entrypoint.sh"]
