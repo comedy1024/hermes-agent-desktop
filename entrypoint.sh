@@ -54,4 +54,6 @@ echo "  - Hermes Gateway: http://localhost:8642"
 echo "================================================"
 
 # Start supervisord (manages all 3 services)
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/hermes.conf
+# Try common paths - supervisor package may install to /usr/sbin or /usr/bin
+SUPERVISORD=$(command -v supervisord || echo "/usr/sbin/supervisord")
+exec "$SUPERVISORD" -c /etc/supervisor/conf.d/hermes.conf

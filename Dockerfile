@@ -53,7 +53,7 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc \
     python3 python3-pip python3-venv python3-dev \
-    libffi-dev ripgrep ffmpeg procps \
+    libffi-dev ripgrep ffmpeg procps supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast Python package management
@@ -90,7 +90,8 @@ COPY --from=pan-ui-builder /build/messages /opt/pan-ui/messages
 # Copy our configuration files
 COPY supervisord.conf /etc/supervisor/conf.d/hermes.conf
 COPY entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/entrypoint.sh
+RUN chmod +x /opt/entrypoint.sh && \
+    mkdir -p /var/log/supervisor
 
 # Expose ports
 # 7860 - noVNC (from openclaw base)
