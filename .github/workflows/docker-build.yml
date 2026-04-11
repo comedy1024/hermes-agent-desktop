@@ -49,7 +49,7 @@ jobs:
           context: .
           load: true
           platforms: linux/amd64
-          tags: ghcr.io/comedy1024/herme-agent-docker:test
+          tags: ghcr.io/comedy1024/hermes-agent-desktop:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -57,7 +57,7 @@ jobs:
         run: |
           docker run --rm -d --name test-hermes \
             -v /tmp/hermes-test:/opt/data \
-            ghcr.io/comedy1024/herme-agent-docker:test || true
+            ghcr.io/comedy1024/hermes-agent-desktop:test || true
           sleep 10
           docker logs test-hermes || true
           docker stop test-hermes || true
@@ -77,11 +77,11 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/comedy1024/herme-agent-docker:latest
-            ghcr.io/comedy1024/herme-agent-docker:${{ steps.version.outputs.tag }}
+            ghcr.io/comedy1024/hermes-agent-desktop:latest
+            ghcr.io/comedy1024/hermes-agent-desktop:${{ steps.version.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
-            org.opencontainers.image.source=https://github.com/comedy1024/herme-agent-docker
+            org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent-desktop
             org.opencontainers.image.description=Hermes Agent + Pan UI (i18n) in Linux GUI Desktop
             org.opencontainers.image.licenses=Apache-2.0

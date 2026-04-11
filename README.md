@@ -1,11 +1,11 @@
-# herme-agent-docker
+# hermes-agent-desktop
 
 基于 [ghcr.io/tunmax/openclaw_computer](https://github.com/tunmax/openclaw_computer) (Linux GUI 桌面) + [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) + [Pan UI](https://github.com/Euraika-Labs/pan-ui) (中文 i18n 版) 打包的一体化 Docker 镜像。
 
 ## 镜像地址
 
 ```
-ghcr.io/comedy1024/herme-agent-docker:latest
+ghcr.io/comedy1024/hermes-agent-desktop:latest
 ```
 
 ## 功能特性
@@ -32,7 +32,7 @@ docker run -d \
   -p 3199:3199 \
   -p 8642:8642 \
   -v ./hermes-data:/opt/data \
-  ghcr.io/comedy1024/herme-agent-docker:latest
+  ghcr.io/comedy1024/hermes-agent-desktop:latest
 ```
 
 启动后：
@@ -87,7 +87,7 @@ docker run -d \
 1. 在 ModelScope 创建一个新的创空间
 2. 在创空间仓库中添加 `Dockerfile` 文件：
 ```dockerfile
-FROM ghcr.io/comedy1024/herme-agent-docker:latest
+FROM ghcr.io/comedy1024/hermes-agent-desktop:latest
 ```
 3. 在创空间「设置」中添加所需环境变量
 4. 点击重启即可自动拉取镜像并部署
@@ -96,7 +96,7 @@ FROM ghcr.io/comedy1024/herme-agent-docker:latest
 
 在 Spaces 仓库中添加 `Dockerfile` 文件：
 ```dockerfile
-FROM ghcr.io/comedy1024/herme-agent-docker:latest
+FROM ghcr.io/comedy1024/hermes-agent-desktop:latest
 
 EXPOSE 7860
 EXPOSE 3199

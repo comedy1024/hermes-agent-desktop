@@ -2,7 +2,7 @@
 set -e
 
 # ================================================================
-# herme-agent-docker Entrypoint
+# hermes-agent-desktop Entrypoint
 # Starts: Linux Desktop (noVNC) + Hermes Agent Gateway + Pan UI
 # ================================================================
 
@@ -11,7 +11,7 @@ PAN_UI_PORT="${PAN_UI_PORT:-3199}"
 HERMES_GATEWAY_PORT="${HERMES_GATEWAY_PORT:-8642}"
 
 echo "============================================================"
-echo "  herme-agent-docker"
+echo "  hermes-agent-desktop"
 echo "  Hermes Agent + Pan UI (i18n) in Linux GUI Desktop"
 echo "============================================================"
 echo ""

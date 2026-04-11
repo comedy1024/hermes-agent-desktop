@@ -1,5 +1,5 @@
 # ================================================================
-# herme-agent-docker: Linux GUI Desktop + Hermes Agent + Pan UI (i18n)
+# hermes-agent-desktop: Linux GUI Desktop + Hermes Agent + Pan UI (i18n)
 # Based on: ghcr.io/tunmax/openclaw_computer (noVNC Linux Desktop)
 # ================================================================
 #
@@ -44,7 +44,7 @@ RUN npm run build
 # ---- Stage 2: Final image ----
 FROM ghcr.io/tunmax/openclaw_computer:latest
 
-LABEL org.opencontainers.image.source=https://github.com/comedy1024/herme-agent-docker
+LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent-desktop
 LABEL org.opencontainers.image.description="Hermes Agent + Pan UI (i18n) in Linux GUI Desktop"
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
