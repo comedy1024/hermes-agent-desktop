@@ -71,9 +71,10 @@ RUN mkdir -p /opt/data && \
     mkdir -p /opt/hermes
 
 # Copy built Pan UI from builder stage
+# Note: Pan UI has no public/ directory - static assets are in .next/static
 COPY --from=pan-ui-builder /build/.next/standalone /opt/pan-ui
 COPY --from=pan-ui-builder /build/.next/static /opt/pan-ui/.next/static
-COPY --from=pan-ui-builder /build/public /opt/pan-ui/public
+# messages/ contains i18n translation files needed at runtime by next-intl
 COPY --from=pan-ui-builder /build/messages /opt/pan-ui/messages
 
 # Copy configuration files
