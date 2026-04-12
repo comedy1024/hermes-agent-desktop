@@ -98,13 +98,11 @@ RUN chmod +x /opt/entrypoint.sh /opt/openclaw-entrypoint.sh && \
 # ---- Rebrand from OpenClaw to Hermes Agent Desktop ----
 # Copy our welcome page and wallpaper
 COPY welcome.html /opt/welcome.html
-COPY wallpaper.svg /opt/hermes-wallpaper.svg
+COPY wallpaper.png /opt/hermes-wallpaper.png
 COPY rebrand.sh /tmp/rebrand.sh
 
-# Install ImageMagick for potential wallpaper conversion + run comprehensive rebrand
-RUN apt-get update && apt-get install -y --no-install-recommends imagemagick && \
-    rm -rf /var/lib/apt/lists/* && \
-    chmod +x /tmp/rebrand.sh && \
+# Run comprehensive rebrand
+RUN chmod +x /tmp/rebrand.sh && \
     bash /tmp/rebrand.sh && \
     rm -f /tmp/rebrand.sh
 
@@ -157,7 +155,7 @@ RUN echo "[wallpaper] Setting Hermes wallpaper in KDE Plasma config..." && \
     fi && \
     # Ensure KDE finds our wallpaper by also symlinking it as default
     mkdir -p /usr/share/wallpapers/Next/contents 2>/dev/null && \
-    cp -f /opt/hermes-wallpaper.svg /usr/share/wallpapers/Next/contents/images.svg 2>/dev/null || true && \
+    cp -f /opt/hermes-wallpaper.png /usr/share/wallpapers/Next/contents/images.png 2>/dev/null || true && \
     # Set wallpaper in KDE globals
     mkdir -p /root/.config && \
     printf '[Wallpaper]\ndefaultWallpaperTheme=hermes-agent-desktop\n' > /root/.config/plasma-wallpaper.conf && \
@@ -165,8 +163,8 @@ RUN echo "[wallpaper] Setting Hermes wallpaper in KDE Plasma config..." && \
 
 # Create Hermes desktop shortcuts
 RUN printf '[Desktop Entry]\nType=Application\nName=Pan UI\nComment=Hermes Agent Web Management Interface\nExec=xdg-open http://localhost:3199\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' > /root/Desktop/hermes-pan-ui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=使用指南\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' > /root/Desktop/hermes-welcome.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /opt/data -e bash -c "echo === Hermes Agent Desktop === && echo Type hermes --help for commands && echo && exec bash"\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' > /root/Desktop/hermes-terminal.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' > /root/Desktop/hermes-welcome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /opt/data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' > /root/Desktop/hermes-terminal.desktop && \
     chmod +x /root/Desktop/hermes-*.desktop
 
 # Create KDE autostart entries: open Pan UI + Welcome page + Terminal on desktop launch
@@ -174,7 +172,7 @@ RUN printf '[Desktop Entry]\nType=Application\nName=Pan UI\nComment=Hermes Agent
 RUN mkdir -p /root/.config/autostart && \
     printf '[Desktop Entry]\nType=Application\nName=Open Pan UI\nExec=bash -c "sleep 5 && xdg-open http://localhost:3199"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-panui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && xdg-open /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-welcome.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /opt/data -e bash -c "echo === Hermes Agent Desktop === && echo Type hermes --help for commands && echo && exec bash"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-terminal.desktop
+    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /opt/data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-terminal.desktop
 
 # Expose ports
 # 7860 - noVNC (from openclaw base)

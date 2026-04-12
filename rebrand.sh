@@ -55,7 +55,7 @@ done
 
 # ---- 3. Replace KDE desktop wallpaper ----
 WALLPAPER_DIR="/usr/share/wallpapers"
-CUSTOM_WALLPAPER="/opt/hermes-wallpaper.svg"
+CUSTOM_WALLPAPER="/opt/hermes-wallpaper.png"
 
 if [ -f "$CUSTOM_WALLPAPER" ]; then
     echo "[rebrand] Installing Hermes wallpaper..."
@@ -63,8 +63,8 @@ if [ -f "$CUSTOM_WALLPAPER" ]; then
     # Create wallpaper directory in KDE format
     mkdir -p "$WALLPAPER_DIR/hermes-agent-desktop/contents"
 
-    # Copy SVG wallpaper
-    cp "$CUSTOM_WALLPAPER" "$WALLPAPER_DIR/hermes-agent-desktop/contents/images.svg"
+    # Copy PNG wallpaper
+    cp "$CUSTOM_WALLPAPER" "$WALLPAPER_DIR/hermes-agent-desktop/contents/images.png"
 
     # Create metadata for KDE wallpaper
     cat > "$WALLPAPER_DIR/hermes-agent-desktop/metadata.json" << 'METADATA'
@@ -106,6 +106,18 @@ WALLCONF
 # ---- 5. Remove any OpenClaw-specific desktop files ----
 echo "[rebrand] Removing remaining OpenClaw desktop files..."
 find /root/Desktop -name '*openclaw*' -o -name '*OpenClaw*' -o -name '*copaw*' 2>/dev/null | while read f; do
+    echo "[rebrand] Removing: $f"
+    rm -f "$f"
+done
+
+# Remove OpenClaw's "使用帮助.html" from desktop
+if [ -f "/root/Desktop/使用帮助.html" ]; then
+    echo "[rebrand] Removing OpenClaw help page: /root/Desktop/使用帮助.html"
+    rm -f "/root/Desktop/使用帮助.html"
+fi
+
+# Remove any other Chinese-named help files from OpenClaw
+find /root/Desktop -name '*使用帮助*' -o -name '*帮助*' 2>/dev/null | while read f; do
     echo "[rebrand] Removing: $f"
     rm -f "$f"
 done
