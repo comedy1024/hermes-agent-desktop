@@ -95,6 +95,31 @@ COPY entrypoint.sh /opt/entrypoint.sh
 RUN chmod +x /opt/entrypoint.sh /opt/openclaw-entrypoint.sh && \
     mkdir -p /var/log/supervisor
 
+# ---- Rebrand from OpenClaw to Hermes Agent Desktop ----
+# Copy our welcome page
+COPY welcome.html /opt/welcome.html
+
+# Remove OpenClaw branding and help pages, replace with Hermes equivalents
+RUN find /root/Desktop -name '*.desktop' -o -name '*.html' -o -name '*.png' 2>/dev/null | head -20 && \
+    rm -f /root/Desktop/openclaw*.desktop /root/Desktop/openclaw*.html 2>/dev/null || true && \
+    rm -f /root/Desktop/help*.html /root/Desktop/help*.desktop 2>/dev/null || true && \
+    rm -rf /root/.openclaw 2>/dev/null || true && \
+    rm -f /root/.config/autostart/openclaw*.desktop 2>/dev/null || true && \
+    rm -f /root/.config/autostart/copaw*.desktop 2>/dev/null || true
+
+# Create Hermes desktop shortcuts
+RUN printf '[Desktop Entry]\nType=Application\nName=Pan UI\nComment=Hermes Agent Web Management Interface\nExec=xdg-open http://localhost:3199\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' > /root/Desktop/hermes-pan-ui.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=使用指南\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' > /root/Desktop/hermes-welcome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /opt/data -e bash -c "echo === Hermes Agent Desktop === && echo Type hermes --help for commands && echo && exec bash"\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' > /root/Desktop/hermes-terminal.desktop && \
+    chmod +x /root/Desktop/hermes-*.desktop
+
+# Create KDE autostart entries: open Pan UI + Welcome page + Terminal on desktop launch
+# Pan UI needs a few seconds to start, so we delay browser opening with a small sleep
+RUN mkdir -p /root/.config/autostart && \
+    printf '[Desktop Entry]\nType=Application\nName=Open Pan UI\nExec=bash -c "sleep 5 && xdg-open http://localhost:3199"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-panui.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && xdg-open /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-welcome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /opt/data -e bash -c "echo === Hermes Agent Desktop === && echo Type hermes --help for commands && echo && exec bash"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-terminal.desktop
+
 # Expose ports
 # 7860 - noVNC (from openclaw base)
 # 3199 - Pan UI

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hermes Agent Desktop - 使用指南</title>
+    <style>
+        :root {
+            --primary: #6C5CE7;
+            --primary-dark: #5A4BD1;
+            --accent: #00CEC9;
+            --bg: #0F0F1A;
+            --card: #1A1A2E;
+            --card-hover: #22223A;
+            --text: #E2E8F0;
+            --text-muted: #94A3B8;
+            --border: #2D2D44;
+            --success: #00B894;
+            --warning: #FDCB6E;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 2rem;
+            max-width: 960px;
+            margin: 0 auto;
+        }
+        .hero {
+            text-align: center;
+            padding: 3rem 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+        .hero h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+        .hero .subtitle { color: var(--text-muted); font-size: 1.1rem; }
+        .hero .badges { margin-top: 1rem; }
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            margin: 0.25rem;
+            background: var(--card);
+            border: 1px solid var(--border);
+        }
+        .badge.green { border-color: var(--success); color: var(--success); }
+        .badge.purple { border-color: var(--primary); color: var(--primary); }
+        h2 {
+            font-size: 1.4rem;
+            margin: 2rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary);
+            display: inline-block;
+        }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin: 1rem 0 2rem; }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.2s;
+            text-decoration: none;
+            color: var(--text);
+            display: block;
+        }
+        .card:hover { background: var(--card-hover); border-color: var(--primary); transform: translateY(-2px); }
+        .card .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+        .card h3 { margin-bottom: 0.5rem; color: var(--primary); }
+        .card p { color: var(--text-muted); font-size: 0.9rem; }
+        .card .url { font-family: monospace; color: var(--accent); font-size: 0.85rem; margin-top: 0.5rem; }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: var(--card); color: var(--primary); font-weight: 600; }
+        td code { background: var(--card); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+        .cmd-block {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            margin: 0.5rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+        }
+        .cmd-block .prompt { color: var(--accent); }
+        .cmd-block .cmd { color: var(--warning); }
+        .note {
+            background: rgba(108, 92, 231, 0.1);
+            border-left: 4px solid var(--primary);
+            padding: 1rem 1.5rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .note.warn {
+            background: rgba(253, 203, 110, 0.1);
+            border-left-color: var(--warning);
+        }
+        .footer {
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 3rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        .footer a { color: var(--primary); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <h1>🚀 Hermes Agent Desktop</h1>
+    <p class="subtitle">AI Agent + Linux 图形桌面 + Web 管理界面，开箱即用</p>
+    <div class="badges">
+        <span class="badge purple">Hermes Agent</span>
+        <span class="badge green">Pan UI (i18n)</span>
+        <span class="badge">noVNC Desktop</span>
+        <span class="badge">78 Skills</span>
+    </div>
+</div>
+
+<!-- 快速入口 -->
+<h2>⚡ 快速入口</h2>
+<div class="cards">
+    <a class="card" href="http://localhost:3199" target="_blank">
+        <div class="icon">💬</div>
+        <h3>Pan UI 管理界面</h3>
+        <p>Hermes Agent 的全功能 Web 管理界面：聊天对话、Skill 管理、MCP 扩展配置、记忆编辑、运维监控</p>
+        <div class="url">http://localhost:3199</div>
+    </a>
+    <a class="card" href="http://localhost:7860" target="_blank">
+        <div class="icon">🖥️</div>
+        <h3>noVNC 桌面</h3>
+        <p>通过浏览器访问完整 Linux KDE 桌面环境，可运行 Chrome、终端、文件管理器等</p>
+        <div class="url">http://localhost:7860</div>
+    </a>
+    <a class="card" href="http://localhost:8642" target="_blank">
+        <div class="icon">🔌</div>
+        <h3>Hermes Gateway API</h3>
+        <p>OpenAI 兼容的 API 端点，由 Pan UI 自动管理启停，支持聊天补全和工具调用</p>
+        <div class="url">http://localhost:8642</div>
+    </a>
+</div>
+
+<!-- 服务端口 -->
+<h2>📡 服务端口</h2>
+<table>
+    <thead><tr><th>端口</th><th>服务</th><th>说明</th></tr></thead>
+    <tbody>
+        <tr><td><code>7860</code></td><td>noVNC</td><td>浏览器访问 Linux KDE 桌面</td></tr>
+        <tr><td><code>3199</code></td><td>Pan UI</td><td>Web 管理界面（聊天/配置/运维）</td></tr>
+        <tr><td><code>8642</code></td><td>Hermes Gateway</td><td>OpenAI 兼容 API（Pan UI 自动管理）</td></tr>
+    </tbody>
+</table>
+
+<!-- 快速开始 -->
+<h2>🎯 快速开始</h2>
+
+<h3>1. 配置 LLM 模型</h3>
+<div class="note">
+    首次使用需要在 Pan UI 中配置 LLM API。打开 <a href="http://localhost:3199" style="color:var(--accent)">Pan UI</a>，
+    进入 <strong>Settings → Profiles</strong>，添加你的 LLM Provider（如 OpenAI、Anthropic、本地 Ollama 等）。
+</div>
+
+<h3>2. 常用终端命令</h3>
+<div class="cmd-block">
+    <span class="prompt">$</span> <span class="cmd">hermes</span> chat              <span style="color:var(--text-muted)"># 启动交互式聊天</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span> gateway run      <span style="color:var(--text-muted)"># 手动启动 Gateway API</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span> --help           <span style="color:var(--text-muted)"># 查看所有命令</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span> skill list        <span style="color:var(--text-muted)"># 列出已安装的 Skills</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span> memory search "关键词" <span style="color:var(--text-muted)"># 搜索记忆</span>
+</div>
+
+<h3>3. 配置文件位置</h3>
+<table>
+    <thead><tr><th>文件</th><th>路径</th><th>说明</th></tr></thead>
+    <tbody>
+        <tr><td>环境变量</td><td><code>/opt/data/.env</code></td><td>API Keys、模型配置</td></tr>
+        <tr><td>主配置</td><td><code>/opt/data/config.yaml</code></td><td>Hermes Agent 配置</td></tr>
+        <tr><td>Soul</td><td><code>/opt/data/SOUL.md</code></td><td>Agent 人格定义</td></tr>
+        <tr><td>Skills</td><td><code>/opt/data/skills/</code></td><td>78 个预装技能</td></tr>
+        <tr><td>记忆</td><td><code>/opt/data/memories/</code></td><td>对话记忆存储</td></tr>
+        <tr><td>会话</td><td><code>/opt/data/sessions/</code></td><td>聊天会话历史</td></tr>
+    </tbody>
+</table>
+
+<!-- 常用操作 -->
+<h2>🔧 常用操作</h2>
+
+<h3>添加 MCP 扩展</h3>
+<div class="cmd-block">
+    <span style="color:var(--text-muted)"># 方式1：通过 Pan UI → Extensions → Add Server</span><br>
+    <span style="color:var(--text-muted)"># 方式2：通过命令行</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span> mcp add my-server --command "npx my-mcp-server"
+</div>
+
+<h3>使用 Playwright 浏览器自动化</h3>
+<div class="cmd-block">
+    <span class="prompt">$</span> <span class="cmd">hermes</span> chat<br>
+    <span class="prompt">></span> 请用浏览器打开 https://example.com 并截图
+</div>
+<div class="note">
+    Playwright + Chromium 已预装，Hermes Agent 可以直接控制浏览器进行网页操作。
+</div>
+
+<h3>WhatsApp Bridge</h3>
+<div class="cmd-block">
+    <span class="prompt">$</span> <span class="cmd">cd</span> /opt/hermes/scripts/whatsapp-bridge<br>
+    <span class="prompt">$</span> <span class="cmd">npm</span> start<br>
+    <span style="color:var(--text-muted)"># 扫描二维码连接 WhatsApp</span>
+</div>
+
+<!-- 环境变量 -->
+<h2>⚙️ 环境变量</h2>
+<table>
+    <thead><tr><th>变量</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+        <tr><td><code>HERMES_HOME</code></td><td><code>/opt/data</code></td><td>数据存储目录</td></tr>
+        <tr><td><code>ROOT_PASSWD</code></td><td><code>123456</code></td><td>桌面锁屏密码</td></tr>
+        <tr><td><code>PYTHONUNBUFFERED</code></td><td><code>1</code></td><td>Python 输出无缓冲</td></tr>
+    </tbody>
+</table>
+
+<!-- 数据持久化 -->
+<h2>💾 数据持久化</h2>
+<div class="note warn">
+    ⚠️ 容器重启后 <code>/opt/data</code> 以外的数据会丢失。请将重要文件保存在 <code>/opt/data</code> 目录下，或挂载 Docker Volume。
+</div>
+<div class="cmd-block">
+    <span style="color:var(--text-muted)"># Docker 运行时挂载数据卷</span><br>
+    docker run -d -p 7860:7860 -p 3199:3199 \<br>
+    &nbsp;&nbsp;-v hermes-data:/opt/data \<br>
+    &nbsp;&nbsp;ghcr.io/comedy1024/hermes-agent-desktop:latest
+</div>
+
+<!-- 链接 -->
+<h2>🔗 相关链接</h2>
+<div class="cards">
+    <a class="card" href="https://github.com/comedy1024/hermes-agent-desktop" target="_blank">
+        <div class="icon">📦</div>
+        <h3>GitHub 仓库</h3>
+        <p>源码、Issue 反馈、贡献指南</p>
+    </a>
+    <a class="card" href="https://github.com/NousResearch/hermes-agent" target="_blank">
+        <div class="icon">🤖</div>
+        <h3>Hermes Agent</h3>
+        <p>上游 AI Agent 框架（Python + Node.js）</p>
+    </a>
+    <a class="card" href="https://github.com/Euraika-Labs/pan-ui" target="_blank">
+        <div class="icon">🎨</div>
+        <h3>Pan UI</h3>
+        <p>Hermes 专用 Web 管理界面</p>
+    </a>
+</div>
+
+<div class="footer">
+    <p>Hermes Agent Desktop · Built with ❤️ by <a href="https://github.com/comedy1024">comedy1024</a></p>
+    <p>Powered by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> + <a href="https://github.com/Euraika-Labs/pan-ui">Pan UI</a> + <a href="https://github.com/TunMax/openclaw_computer">OpenClaw Computer</a></p>
+</div>
+
+</body>
+</html>
