@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a1a"/>
+      <stop offset="50%" style="stop-color:#0f0f2a"/>
+      <stop offset="100%" style="stop-color:#0a0a1a"/>
+    </linearGradient>
+    <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#6C5CE7"/>
+      <stop offset="100%" style="stop-color:#00CEC9"/>
+    </linearGradient>
+    <linearGradient id="subtleGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6C5CE7;stop-opacity:0.05"/>
+      <stop offset="50%" style="stop-color:#6C5CE7;stop-opacity:0.02"/>
+      <stop offset="100%" style="stop-color:#00CEC9;stop-opacity:0.05"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="20" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+
+  <!-- Subtle geometric patterns -->
+  <g opacity="0.03" stroke="#6C5CE7" fill="none" stroke-width="1">
+    <!-- Grid lines -->
+    <line x1="200" y1="0" x2="200" y2="1080"/>
+    <line x1="400" y1="0" x2="400" y2="1080"/>
+    <line x1="600" y1="0" x2="600" y2="1080"/>
+    <line x1="800" y1="0" x2="800" y2="1080"/>
+    <line x1="1120" y1="0" x2="1120" y2="1080"/>
+    <line x1="1320" y1="0" x2="1320" y2="1080"/>
+    <line x1="1520" y1="0" x2="1520" y2="1080"/>
+    <line x1="1720" y1="0" x2="1720" y2="1080"/>
+    <line x1="0" y1="180" x2="1920" y2="180"/>
+    <line x1="0" y1="360" x2="1920" y2="360"/>
+    <line x1="0" y1="540" x2="1920" y2="540"/>
+    <line x1="0" y1="720" x2="1920" y2="720"/>
+    <line x1="0" y1="900" x2="1920" y2="900"/>
+  </g>
+
+  <!-- Decorative circles (neural network nodes) -->
+  <g opacity="0.06" fill="none" stroke-width="1">
+    <circle cx="300" cy="200" r="40" stroke="#6C5CE7"/>
+    <circle cx="500" cy="350" r="25" stroke="#00CEC9"/>
+    <circle cx="1500" cy="250" r="35" stroke="#6C5CE7"/>
+    <circle cx="1650" cy="800" r="45" stroke="#00CEC9"/>
+    <circle cx="250" cy="750" r="30" stroke="#6C5CE7"/>
+    <circle cx="1700" cy="500" r="20" stroke="#6C5CE7"/>
+    <circle cx="180" cy="500" r="15" stroke="#00CEC9"/>
+    <circle cx="1400" cy="150" r="20" stroke="#00CEC9"/>
+    <circle cx="1600" cy="950" r="25" stroke="#6C5CE7"/>
+    <circle cx="400" cy="900" r="35" stroke="#6C5CE7"/>
+  </g>
+
+  <!-- Connection lines between nodes -->
+  <g opacity="0.03" stroke="#6C5CE7" stroke-width="0.5">
+    <line x1="300" y1="200" x2="500" y2="350"/>
+    <line x1="500" y1="350" x2="250" y2="750"/>
+    <line x1="1500" y1="250" x2="1700" y2="500"/>
+    <line x1="1700" y1="500" x2="1650" y2="800"/>
+    <line x1="1650" y1="800" x2="1600" y2="950"/>
+    <line x1="250" y1="750" x2="400" y2="900"/>
+    <line x1="1500" y1="250" x2="1400" y2="150"/>
+    <line x1="180" y1="500" x2="300" y2="200"/>
+  </g>
+
+  <!-- Central glow effect -->
+  <ellipse cx="960" cy="480" rx="500" ry="250" fill="url(#subtleGlow)"/>
+
+  <!-- Main Title: Hermes -->
+  <text x="960" y="440" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="120" font-weight="700" fill="url(#titleGrad)" filter="url(#glow)">
+    HERMES
+  </text>
+
+  <!-- Subtitle -->
+  <text x="960" y="510" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="300" fill="#94A3B8" letter-spacing="8">
+    AGENT DESKTOP
+  </text>
+
+  <!-- Feature tags -->
+  <g transform="translate(960, 580)" text-anchor="middle">
+    <!-- Tag backgrounds -->
+    <rect x="-320" y="-16" width="140" height="32" rx="16" fill="none" stroke="#6C5CE7" stroke-width="1" opacity="0.5"/>
+    <rect x="-155" y="-16" width="140" height="32" rx="16" fill="none" stroke="#00CEC9" stroke-width="1" opacity="0.5"/>
+    <rect x="10" y="-16" width="140" height="32" rx="16" fill="none" stroke="#6C5CE7" stroke-width="1" opacity="0.5"/>
+    <rect x="175" y="-16" width="140" height="32" rx="16" fill="none" stroke="#00CEC9" stroke-width="1" opacity="0.5"/>
+
+    <!-- Tag text -->
+    <text x="-250" y="5" font-family="'Segoe UI', Arial, sans-serif" font-size="13" fill="#6C5CE7" letter-spacing="1">AI Agent</text>
+    <text x="-85" y="5" font-family="'Segoe UI', Arial, sans-serif" font-size="13" fill="#00CEC9" letter-spacing="1">Pan UI</text>
+    <text x="80" y="5" font-family="'Segoe UI', Arial, sans-serif" font-size="13" fill="#6C5CE7" letter-spacing="1">78 Skills</text>
+    <text x="245" y="5" font-family="'Segoe UI', Arial, sans-serif" font-size="13" fill="#00CEC9" letter-spacing="1">noVNC</text>
+  </g>
+
+  <!-- Description -->
+  <text x="960" y="650" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="18" fill="#64748B" letter-spacing="2">
+    AI Agent + Linux Desktop + Web Management Interface — Ready to Use
+  </text>
+
+  <!-- Bottom: GitHub URL -->
+  <g transform="translate(960, 1020)">
+    <!-- GitHub icon (simplified) -->
+    <circle cx="-200" cy="-5" r="12" fill="none" stroke="#94A3B8" stroke-width="1.5" opacity="0.6"/>
+    <text x="-200" y="0" text-anchor="middle" font-family="Arial" font-size="14" fill="#94A3B8" opacity="0.6">⌘</text>
+
+    <!-- URL -->
+    <text x="-170" y="0" text-anchor="start" font-family="'Courier New', monospace" font-size="16" fill="#94A3B8" opacity="0.5">
+      github.com/comedy1024/hermes-agent-desktop
+    </text>
+  </g>
+
+  <!-- Corner decorations -->
+  <g opacity="0.1" stroke="#6C5CE7" stroke-width="1" fill="none">
+    <polyline points="40,40 40,80 80,80"/>
+    <polyline points="1880,40 1880,80 1840,80"/>
+    <polyline points="40,1040 40,1000 80,1000"/>
+    <polyline points="1880,1040 1880,1000 1840,1000"/>
+  </g>
+
+  <!-- Bottom right branding (replaces OpenClaw watermark) -->
+  <text x="1880" y="1060" text-anchor="end" font-family="'Segoe UI', Arial, sans-serif" font-size="12" fill="#4A5568" opacity="0.4">
+    Hermes Agent Desktop · comedy1024
+  </text>
+</svg>

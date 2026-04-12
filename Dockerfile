@@ -96,16 +96,72 @@ RUN chmod +x /opt/entrypoint.sh /opt/openclaw-entrypoint.sh && \
     mkdir -p /var/log/supervisor
 
 # ---- Rebrand from OpenClaw to Hermes Agent Desktop ----
-# Copy our welcome page
+# Copy our welcome page and wallpaper
 COPY welcome.html /opt/welcome.html
+COPY wallpaper.svg /opt/hermes-wallpaper.svg
+COPY rebrand.sh /tmp/rebrand.sh
 
-# Remove OpenClaw branding and help pages, replace with Hermes equivalents
-RUN find /root/Desktop -name '*.desktop' -o -name '*.html' -o -name '*.png' 2>/dev/null | head -20 && \
-    rm -f /root/Desktop/openclaw*.desktop /root/Desktop/openclaw*.html 2>/dev/null || true && \
-    rm -f /root/Desktop/help*.html /root/Desktop/help*.desktop 2>/dev/null || true && \
-    rm -rf /root/.openclaw 2>/dev/null || true && \
-    rm -f /root/.config/autostart/openclaw*.desktop 2>/dev/null || true && \
-    rm -f /root/.config/autostart/copaw*.desktop 2>/dev/null || true
+# Install ImageMagick for potential wallpaper conversion + run comprehensive rebrand
+RUN apt-get update && apt-get install -y --no-install-recommends imagemagick && \
+    rm -rf /var/lib/apt/lists/* && \
+    chmod +x /tmp/rebrand.sh && \
+    bash /tmp/rebrand.sh && \
+    rm -f /tmp/rebrand.sh
+
+# ---- Additional deep scan for remaining brand references ----
+# Search noVNC and desktop stack for any remaining "tunmax", "OpenClaw", "b.z" text
+# This catches watermarks embedded in HTML/JS/CSS that the base image pre-installs
+RUN echo "[deep-rebrand] Scanning for remaining brand references..." && \
+    # Search and patch noVNC HTML files for watermark text
+    for f in $(find /usr/share/novnc /opt/noVNC /usr/share/websockify /opt/websockify \
+               /usr/share/krfb /usr/share/remote-desktop \
+               -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) 2>/dev/null); do \
+        if grep -qi 'openclaw\|tunmax\|by b\.z\|OpenClaw_Computer\|openclaw_computer' "$f" 2>/dev/null; then \
+            echo "[deep-rebrand] Patching brand text in: $f" && \
+            sed -i 's/tunmax\/OpenClaw_Computer/comedy1024\/hermes-agent-desktop/gI' "$f" && \
+            sed -i 's/tunmax\/openclaw_computer/comedy1024\/hermes-agent-desktop/gI' "$f" && \
+            sed -i 's/OpenClaw_Computer/Hermes Agent Desktop/gI' "$f" && \
+            sed -i 's/OpenClaw Computer/Hermes Agent Desktop/gI' "$f" && \
+            sed -i 's/openclaw_computer/hermes-agent-desktop/gI' "$f" && \
+            sed -i 's/by b\.z\./by comedy1024/gI' "$f" && \
+            sed -i 's/by b\.z/by comedy1024/gI' "$f" && \
+            sed -i 's/tunmax/comedy1024/gI' "$f"; \
+        fi; \
+    done && \
+    # Also patch startup/entrypoint scripts that might inject HTML
+    for f in $(find / -maxdepth 4 -type f \( -name 'start.sh' -o -name 'start-novnc.sh' \
+               -o -name 'entrypoint.sh' -o -name 'novnc*.sh' \) 2>/dev/null \
+               | grep -v '/opt/hermes/'); do \
+        if grep -qi 'openclaw\|tunmax\|by b\.z' "$f" 2>/dev/null; then \
+            echo "[deep-rebrand] Patching brand text in script: $f" && \
+            sed -i 's/tunmax\/OpenClaw_Computer/comedy1024\/hermes-agent-desktop/gI' "$f" && \
+            sed -i 's/OpenClaw_Computer/Hermes Agent Desktop/gI' "$f" && \
+            sed -i 's/OpenClaw Computer/Hermes Agent Desktop/gI' "$f" && \
+            sed -i 's/by b\.z/by comedy1024/gI' "$f" && \
+            sed -i 's/tunmax/comedy1024/gI' "$f"; \
+        fi; \
+    done && \
+    # Remove any OpenClaw logo/icon image files
+    find / -maxdepth 5 -type f \( -name '*openclaw*logo*' -o -name '*openclaw*icon*' \
+       -o -name '*OpenClaw*logo*' -o -name '*OpenClaw*icon*' \) 2>/dev/null | \
+        xargs rm -f 2>/dev/null || true && \
+    echo "[deep-rebrand] Deep scan complete"
+
+# ---- Apply KDE wallpaper via Plasma config ----
+# Read the existing plasma config to find the wallpaper Containment, then patch it
+RUN echo "[wallpaper] Setting Hermes wallpaper in KDE Plasma config..." && \
+    PLASMA_RC="/root/.config/plasma-org.kde.plasma.desktop-appletsrc" && \
+    if [ -f "$PLASMA_RC" ]; then \
+        # Replace any existing wallpaper Image= setting with our custom wallpaper
+        sed -i 's|Image=.*|Image=file:///usr/share/wallpapers/hermes-agent-desktop|g' "$PLASMA_RC"; \
+    fi && \
+    # Ensure KDE finds our wallpaper by also symlinking it as default
+    mkdir -p /usr/share/wallpapers/Next/contents 2>/dev/null && \
+    cp -f /opt/hermes-wallpaper.svg /usr/share/wallpapers/Next/contents/images.svg 2>/dev/null || true && \
+    # Set wallpaper in KDE globals
+    mkdir -p /root/.config && \
+    printf '[Wallpaper]\ndefaultWallpaperTheme=hermes-agent-desktop\n' > /root/.config/plasma-wallpaper.conf && \
+    echo "[wallpaper] Done"
 
 # Create Hermes desktop shortcuts
 RUN printf '[Desktop Entry]\nType=Application\nName=Pan UI\nComment=Hermes Agent Web Management Interface\nExec=xdg-open http://localhost:3199\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' > /root/Desktop/hermes-pan-ui.desktop && \
