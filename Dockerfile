@@ -9,7 +9,7 @@
 #
 # Ports:
 #   7860 - noVNC web desktop
-#   8787 - Hermes WebUI (replaces Pan UI)
+#   8787 - Hermes WebUI
 #   8642 - Hermes Agent Gateway API
 
 # ---- Stage 1: Build Hermes WebUI ----
@@ -21,10 +21,6 @@ WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends git && \
     git clone https://github.com/nesquena/hermes-webui.git . && \
     rm -rf .git
-
-# Install Python dependencies into a venv
-RUN python -m venv /build/venv && \
-    /build/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # ---- Stage 2: Final image ----
 FROM ghcr.io/tunmax/openclaw_computer:latest
@@ -38,14 +34,15 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc \
     python3 python3-pip python3-venv python3-dev \
-    libffi-dev ripgrep ffmpeg procps supervisor \
+    libffi-dev ripgrep ffmpeg procps supervisor curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast Python package management
 RUN pip install --no-cache-dir uv --break-system-packages
 
 # Clone and install Hermes Agent (following official Dockerfile approach)
-# This is the slowest layer - split from WebUI for better caching
+# This is the slowest layer - hermes-agent must be installed into BOTH
+# system Python (for CLI `hermes` command) AND the WebUI venv (for deep integration)
 RUN git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
     cd /opt/hermes && \
     uv pip install --system --break-system-packages --no-cache -e ".[all]" && \
@@ -65,10 +62,18 @@ ENV HERMES_HOME=/opt/data
 ENV PYTHONUNBUFFERED=1
 RUN mkdir -p /opt/data
 
-# Copy built Hermes WebUI from builder stage
-# WebUI runs as a Python HTTP server - no Node.js needed!
+# Copy Hermes WebUI from builder stage
 COPY --from=webui-builder /build /opt/hermes-webui
-COPY --from=webui-builder /build/venv /opt/hermes-webui/venv
+
+# ---- Set up Hermes WebUI with shared hermes-agent Python environment ----
+# Hermes WebUI deeply integrates with hermes-agent by importing its Python
+# modules directly (not via HTTP). It needs hermes-agent in its Python path.
+# We create a venv for WebUI, install its minimal deps (pyyaml only),
+# then install hermes-agent into the same venv so WebUI can import it.
+RUN cd /opt/hermes-webui && \
+    python3 -m venv venv && \
+    venv/bin/pip install --no-cache-dir -r requirements.txt && \
+    venv/bin/pip install --no-cache-dir -e "/opt/hermes[all]"
 
 # Configure Hermes WebUI environment
 ENV HERMES_WEBUI_AGENT_DIR=/opt/hermes
@@ -101,9 +106,7 @@ RUN chmod +x /tmp/rebrand.sh && \
 
 # ---- Additional deep scan for remaining brand references ----
 # Search noVNC and desktop stack for any remaining "tunmax", "OpenClaw", "b.z" text
-# This catches watermarks embedded in HTML/JS/CSS that the base image pre-installs
 RUN echo "[deep-rebrand] Scanning for remaining brand references..." && \
-    # Search and patch noVNC HTML files for watermark text
     for f in $(find /usr/share/novnc /opt/noVNC /usr/share/websockify /opt/websockify \
                /usr/share/krfb /usr/share/remote-desktop \
                -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) 2>/dev/null); do \
@@ -119,7 +122,6 @@ RUN echo "[deep-rebrand] Scanning for remaining brand references..." && \
             sed -i 's/tunmax/comedy1024/gI' "$f"; \
         fi; \
     done && \
-    # Also patch startup/entrypoint scripts that might inject HTML
     for f in $(find / -maxdepth 4 -type f \( -name 'start.sh' -o -name 'start-novnc.sh' \
                -o -name 'entrypoint.sh' -o -name 'novnc*.sh' \) 2>/dev/null \
                | grep -v '/opt/hermes/'); do \
@@ -132,7 +134,6 @@ RUN echo "[deep-rebrand] Scanning for remaining brand references..." && \
             sed -i 's/tunmax/comedy1024/gI' "$f"; \
         fi; \
     done && \
-    # Remove any OpenClaw logo/icon image files
     find / -maxdepth 5 -type f \( -name '*openclaw*logo*' -o -name '*openclaw*icon*' \
        -o -name '*OpenClaw*logo*' -o -name '*OpenClaw*icon*' \) 2>/dev/null | \
         xargs rm -f 2>/dev/null || true && \
@@ -142,13 +143,10 @@ RUN echo "[deep-rebrand] Scanning for remaining brand references..." && \
 RUN echo "[wallpaper] Setting Hermes wallpaper in KDE Plasma config..." && \
     PLASMA_RC="/root/.config/plasma-org.kde.plasma.desktop-appletsrc" && \
     if [ -f "$PLASMA_RC" ]; then \
-        # Replace any existing wallpaper Image= setting with our custom wallpaper
         sed -i 's|Image=.*|Image=file:///usr/share/wallpapers/hermes-agent-desktop|g' "$PLASMA_RC"; \
     fi && \
-    # Ensure KDE finds our wallpaper by also symlinking it as default
     mkdir -p /usr/share/wallpapers/Next/contents 2>/dev/null && \
     cp -f /opt/hermes-wallpaper.png /usr/share/wallpapers/Next/contents/images.png 2>/dev/null || true && \
-    # Set wallpaper in KDE globals
     mkdir -p /root/.config && \
     printf '[Wallpaper]\ndefaultWallpaperTheme=hermes-agent-desktop\n' > /root/.config/plasma-wallpaper.conf && \
     echo "[wallpaper] Done"
@@ -168,7 +166,7 @@ RUN mkdir -p /root/.config/autostart && \
 # Expose ports
 # 7860 - noVNC (from openclaw base)
 # 8787 - Hermes WebUI
-# 8642 - Hermes Gateway API
+# 8642 - Hermes Agent Gateway API
 EXPOSE 7860 8787 8642
 
 # Data volume
