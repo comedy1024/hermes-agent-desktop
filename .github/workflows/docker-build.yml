@@ -83,5 +83,5 @@ jobs:
           cache-to: type=gha,mode=max
           labels: |
             org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent-desktop
-            org.opencontainers.image.description=Hermes Agent + Pan UI (i18n) in Linux GUI Desktop
-            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.description=Hermes Agent + Hermes WebUI in Linux GUI Desktop
+            org.opencontainers.image.licenses=MIT

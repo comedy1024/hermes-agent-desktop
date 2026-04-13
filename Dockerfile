@@ -1,52 +1,37 @@
 # ================================================================
-# hermes-agent-desktop: Linux GUI Desktop + Hermes Agent + Pan UI (i18n)
+# hermes-agent-desktop: Linux GUI Desktop + Hermes Agent + Hermes WebUI
 # Based on: ghcr.io/tunmax/openclaw_computer (noVNC Linux Desktop)
 # ================================================================
 #
 # Build stages:
-#   1. Build Pan UI (Next.js) with Chinese i18n support
+#   1. Build Hermes WebUI (Python + vanilla JS, lightweight)
 #   2. Combine everything into the openclaw desktop image
 #
 # Ports:
 #   7860 - noVNC web desktop
-#   3199 - Pan UI web management interface
+#   8787 - Hermes WebUI (replaces Pan UI)
 #   8642 - Hermes Agent Gateway API
 
-# ---- Stage 1: Build Pan UI with i18n ----
-FROM node:20-slim AS pan-ui-builder
+# ---- Stage 1: Build Hermes WebUI ----
+FROM python:3.12-slim AS webui-builder
 
 WORKDIR /build
 
-# Clone Pan UI source
-RUN apt-get update && apt-get install -y git && \
-    git clone https://github.com/Euraika-Labs/pan-ui.git . && \
+# Clone Hermes WebUI source
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    git clone https://github.com/nesquena/hermes-webui.git . && \
     rm -rf .git
 
-# Install dependencies
-RUN npm ci
-
-# Install i18n dependency (added by our patches)
-RUN npm install next-intl@^4.9.1
-
-# Apply i18n patches - copy over modified files
-COPY patches/messages/ ./messages/
-COPY patches/i18n/ ./src/i18n/
-COPY patches/next.config.ts ./next.config.ts
-COPY patches/app/layout.tsx ./src/app/layout.tsx
-COPY patches/app/login/ ./src/app/login/
-COPY patches/components/ ./src/components/
-COPY patches/features/ ./src/features/
-COPY patches/lib/ ./src/lib/
-
-# Build Pan UI for production with standalone output
-RUN npm run build
+# Install Python dependencies into a venv
+RUN python -m venv /build/venv && \
+    /build/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # ---- Stage 2: Final image ----
 FROM ghcr.io/tunmax/openclaw_computer:latest
 
 LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent-desktop
-LABEL org.opencontainers.image.description="Hermes Agent + Pan UI (i18n) in Linux GUI Desktop"
-LABEL org.opencontainers.image.licenses=Apache-2.0
+LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux GUI Desktop"
+LABEL org.opencontainers.image.licenses=MIT
 
 # Install all system dependencies (matching official hermes-agent Dockerfile)
 USER root
@@ -60,7 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir uv --break-system-packages
 
 # Clone and install Hermes Agent (following official Dockerfile approach)
-# This is the slowest layer - split from Pan UI for better caching
+# This is the slowest layer - split from WebUI for better caching
 RUN git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
     cd /opt/hermes && \
     uv pip install --system --break-system-packages --no-cache -e ".[all]" && \
@@ -80,12 +65,20 @@ ENV HERMES_HOME=/opt/data
 ENV PYTHONUNBUFFERED=1
 RUN mkdir -p /opt/data
 
-# Copy built Pan UI from builder stage
-# Note: Pan UI has no public/ directory - static assets are in .next/static
-COPY --from=pan-ui-builder /build/.next/standalone /opt/pan-ui
-COPY --from=pan-ui-builder /build/.next/static /opt/pan-ui/.next/static
-# messages/ contains i18n translation files needed at runtime by next-intl
-COPY --from=pan-ui-builder /build/messages /opt/pan-ui/messages
+# Copy built Hermes WebUI from builder stage
+# WebUI runs as a Python HTTP server - no Node.js needed!
+COPY --from=webui-builder /build /opt/hermes-webui
+COPY --from=webui-builder /build/venv /opt/hermes-webui/venv
+
+# Configure Hermes WebUI environment
+ENV HERMES_WEBUI_AGENT_DIR=/opt/hermes
+ENV HERMES_WEBUI_PYTHON=/opt/hermes-webui/venv/bin/python
+ENV HERMES_WEBUI_HOST=0.0.0.0
+ENV HERMES_WEBUI_PORT=8787
+ENV HERMES_WEBUI_STATE_DIR=/opt/data/.hermes/webui-mvp
+ENV HERMES_WEBUI_DEFAULT_WORKSPACE=/opt/data
+# Touch container marker so WebUI knows it's in Docker
+RUN touch /.within_container
 
 # Copy our configuration files
 # Rename base image's entrypoint so we can call it from supervisord
@@ -146,7 +139,6 @@ RUN echo "[deep-rebrand] Scanning for remaining brand references..." && \
     echo "[deep-rebrand] Deep scan complete"
 
 # ---- Apply KDE wallpaper via Plasma config ----
-# Read the existing plasma config to find the wallpaper Containment, then patch it
 RUN echo "[wallpaper] Setting Hermes wallpaper in KDE Plasma config..." && \
     PLASMA_RC="/root/.config/plasma-org.kde.plasma.desktop-appletsrc" && \
     if [ -f "$PLASMA_RC" ]; then \
@@ -162,29 +154,28 @@ RUN echo "[wallpaper] Setting Hermes wallpaper in KDE Plasma config..." && \
     echo "[wallpaper] Done"
 
 # Create Hermes desktop shortcuts
-RUN printf '[Desktop Entry]\nType=Application\nName=Pan UI\nComment=Hermes Agent Web Management Interface\nExec=xdg-open http://localhost:3199\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' > /root/Desktop/hermes-pan-ui.desktop && \
+RUN printf '[Desktop Entry]\nType=Application\nName=Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8787\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' > /root/Desktop/hermes-webui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' > /root/Desktop/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /opt/data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' > /root/Desktop/hermes-terminal.desktop && \
     chmod +x /root/Desktop/hermes-*.desktop
 
-# Create KDE autostart entries: open Pan UI + Welcome page + Terminal on desktop launch
-# Pan UI needs a few seconds to start, so we delay browser opening with a small sleep
+# Create KDE autostart entries: open WebUI + Welcome page + Terminal on desktop launch
 RUN mkdir -p /root/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Pan UI\nExec=bash -c "sleep 5 && xdg-open http://localhost:3199"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-panui.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && xdg-open http://localhost:8787"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-webui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && xdg-open /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /opt/data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-terminal.desktop
 
 # Expose ports
 # 7860 - noVNC (from openclaw base)
-# 3199 - Pan UI
+# 8787 - Hermes WebUI
 # 8642 - Hermes Gateway API
-EXPOSE 7860 3199 8642
+EXPOSE 7860 8787 8642
 
 # Data volume
 VOLUME ["/opt/data"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:3199/ || exit 1
+    CMD curl -f http://localhost:8787/health || exit 1
 
 ENTRYPOINT ["/opt/entrypoint.sh"]

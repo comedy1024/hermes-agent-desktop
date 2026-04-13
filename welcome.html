@@ -55,6 +55,7 @@
         }
         .badge.green { border-color: var(--success); color: var(--success); }
         .badge.purple { border-color: var(--primary); color: var(--primary); }
+        .badge.cyan { border-color: var(--accent); color: var(--accent); }
         h2 {
             font-size: 1.4rem;
             margin: 2rem 0 1rem;
@@ -124,31 +125,31 @@
     <p class="subtitle">AI Agent + Linux 图形桌面 + Web 管理界面，开箱即用</p>
     <div class="badges">
         <span class="badge purple">Hermes Agent</span>
-        <span class="badge green">Pan UI (i18n)</span>
+        <span class="badge cyan">Hermes WebUI</span>
         <span class="badge">noVNC Desktop</span>
-        <span class="badge">78 Skills</span>
+        <span class="badge green">78 Skills</span>
     </div>
 </div>
 
 <!-- 快速入口 -->
 <h2>⚡ 快速入口</h2>
 <div class="cards">
-    <a class="card" href="http://localhost:3199" target="_blank">
+    <a class="card" href="http://localhost:8787" target="_blank">
         <div class="icon">💬</div>
-        <h3>Pan UI 管理界面</h3>
-        <p>Hermes Agent 的全功能 Web 管理界面：聊天对话、Skill 管理、MCP 扩展配置、记忆编辑、运维监控</p>
-        <div class="url">http://localhost:3199</div>
+        <h3>Hermes WebUI</h3>
+        <p>Hermes Agent 的全功能 Web 界面：流式聊天、文件浏览器、Skill 管理、记忆编辑、语音输入、多主题</p>
+        <div class="url">http://localhost:8787</div>
     </a>
     <a class="card" href="http://localhost:7860" target="_blank">
         <div class="icon">🖥️</div>
         <h3>noVNC 桌面</h3>
-        <p>通过浏览器访问完整 Linux KDE 桌面环境，可运行 Chrome、终端、文件管理器等</p>
+        <p>通过浏览器访问完整 Linux KDE 桌面环境，可运行终端、文件管理器等</p>
         <div class="url">http://localhost:7860</div>
     </a>
     <a class="card" href="http://localhost:8642" target="_blank">
         <div class="icon">🔌</div>
         <h3>Hermes Gateway API</h3>
-        <p>OpenAI 兼容的 API 端点，由 Pan UI 自动管理启停，支持聊天补全和工具调用</p>
+        <p>OpenAI 兼容的 API 端点，由 WebUI 自动管理启停，支持聊天补全和工具调用</p>
         <div class="url">http://localhost:8642</div>
     </a>
 </div>
@@ -159,8 +160,8 @@
     <thead><tr><th>端口</th><th>服务</th><th>说明</th></tr></thead>
     <tbody>
         <tr><td><code>7860</code></td><td>noVNC</td><td>浏览器访问 Linux KDE 桌面</td></tr>
-        <tr><td><code>3199</code></td><td>Pan UI</td><td>Web 管理界面（聊天/配置/运维）</td></tr>
-        <tr><td><code>8642</code></td><td>Hermes Gateway</td><td>OpenAI 兼容 API（Pan UI 自动管理）</td></tr>
+        <tr><td><code>8787</code></td><td>Hermes WebUI</td><td>Web 管理界面（聊天/配置/运维）</td></tr>
+        <tr><td><code>8642</code></td><td>Hermes Gateway</td><td>OpenAI 兼容 API（WebUI 自动管理）</td></tr>
     </tbody>
 </table>
 
@@ -169,16 +170,16 @@
 
 <h3>1. 配置 LLM 模型</h3>
 <div class="note">
-    首次使用需要在 Pan UI 中配置 LLM API。打开 <a href="http://localhost:3199" style="color:var(--accent)">Pan UI</a>，
-    进入 <strong>Settings → Profiles</strong>，添加你的 LLM Provider（如 OpenAI、Anthropic、本地 Ollama 等）。
+    首次使用需要在 WebUI 中配置 LLM API。打开 <a href="http://localhost:8787" style="color:var(--accent)">Hermes WebUI</a>，
+    进入 <strong>Profiles</strong> 面板，添加你的 LLM Provider（如 OpenAI、Anthropic、DeepSeek、本地 Ollama 等）。
 </div>
 
 <h3>2. 常用终端命令</h3>
 <div class="cmd-block">
-    <span class="prompt">$</span> <span class="cmd">hermes</span> chat              <span style="color:var(--text-muted)"># 启动交互式聊天</span><br>
-    <span class="prompt">$</span> <span class="cmd">hermes</span> gateway run      <span style="color:var(--text-muted)"># 手动启动 Gateway API</span><br>
-    <span class="prompt">$</span> <span class="cmd">hermes</span> --help           <span style="color:var(--text-muted)"># 查看所有命令</span><br>
-    <span class="prompt">$</span> <span class="cmd">hermes</span> skill list        <span style="color:var(--text-muted)"># 列出已安装的 Skills</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span>              <span style="color:var(--text-muted)"># 启动交互式聊天 (TUI)</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span> gateway run   <span style="color:var(--text-muted)"># 手动启动 Gateway API</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span> --help          <span style="color:var(--text-muted)"># 查看所有命令</span><br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span> skill list       <span style="color:var(--text-muted)"># 列出已安装的 Skills</span><br>
     <span class="prompt">$</span> <span class="cmd">hermes</span> memory search "关键词" <span style="color:var(--text-muted)"># 搜索记忆</span>
 </div>
 
@@ -192,6 +193,7 @@
         <tr><td>Skills</td><td><code>/opt/data/skills/</code></td><td>78 个预装技能</td></tr>
         <tr><td>记忆</td><td><code>/opt/data/memories/</code></td><td>对话记忆存储</td></tr>
         <tr><td>会话</td><td><code>/opt/data/sessions/</code></td><td>聊天会话历史</td></tr>
+        <tr><td>WebUI 状态</td><td><code>/opt/data/.hermes/webui-mvp/</code></td><td>WebUI 配置与状态</td></tr>
     </tbody>
 </table>
 
@@ -200,14 +202,14 @@
 
 <h3>添加 MCP 扩展</h3>
 <div class="cmd-block">
-    <span style="color:var(--text-muted)"># 方式1：通过 Pan UI → Extensions → Add Server</span><br>
+    <span style="color:var(--text-muted)"># 方式1：通过 WebUI → Profiles → MCP 配置</span><br>
     <span style="color:var(--text-muted)"># 方式2：通过命令行</span><br>
     <span class="prompt">$</span> <span class="cmd">hermes</span> mcp add my-server --command "npx my-mcp-server"
 </div>
 
 <h3>使用 Playwright 浏览器自动化</h3>
 <div class="cmd-block">
-    <span class="prompt">$</span> <span class="cmd">hermes</span> chat<br>
+    <span class="prompt">$</span> <span class="cmd">hermes</span><br>
     <span class="prompt">></span> 请用浏览器打开 https://example.com 并截图
 </div>
 <div class="note">
@@ -227,6 +229,8 @@
     <thead><tr><th>变量</th><th>默认值</th><th>说明</th></tr></thead>
     <tbody>
         <tr><td><code>HERMES_HOME</code></td><td><code>/opt/data</code></td><td>数据存储目录</td></tr>
+        <tr><td><code>HERMES_WEBUI_PORT</code></td><td><code>8787</code></td><td>WebUI 服务端口</td></tr>
+        <tr><td><code>HERMES_WEBUI_PASSWORD</code></td><td>（空）</td><td>可选的 WebUI 访问密码</td></tr>
         <tr><td><code>ROOT_PASSWD</code></td><td><code>123456</code></td><td>桌面锁屏密码</td></tr>
         <tr><td><code>PYTHONUNBUFFERED</code></td><td><code>1</code></td><td>Python 输出无缓冲</td></tr>
     </tbody>
@@ -239,7 +243,7 @@
 </div>
 <div class="cmd-block">
     <span style="color:var(--text-muted)"># Docker 运行时挂载数据卷</span><br>
-    docker run -d -p 7860:7860 -p 3199:3199 \<br>
+    docker run -d -p 7860:7860 -p 8787:8787 \<br>
     &nbsp;&nbsp;-v hermes-data:/opt/data \<br>
     &nbsp;&nbsp;ghcr.io/comedy1024/hermes-agent-desktop:latest
 </div>
@@ -257,16 +261,16 @@
         <h3>Hermes Agent</h3>
         <p>上游 AI Agent 框架（Python + Node.js）</p>
     </a>
-    <a class="card" href="https://github.com/Euraika-Labs/pan-ui" target="_blank">
+    <a class="card" href="https://github.com/nesquena/hermes-webui" target="_blank">
         <div class="icon">🎨</div>
-        <h3>Pan UI</h3>
-        <p>Hermes 专用 Web 管理界面</p>
+        <h3>Hermes WebUI</h3>
+        <p>Hermes 官方社区 Web 管理界面</p>
     </a>
 </div>
 
 <div class="footer">
     <p>Hermes Agent Desktop · Built with ❤️ by <a href="https://github.com/comedy1024">comedy1024</a></p>
-    <p>Powered by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> + <a href="https://github.com/Euraika-Labs/pan-ui">Pan UI</a> + <a href="https://github.com/TunMax/openclaw_computer">OpenClaw Computer</a></p>
+    <p>Powered by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> + <a href="https://github.com/nesquena/hermes-webui">Hermes WebUI</a> + <a href="https://github.com/TunMax/openclaw_computer">OpenClaw Computer</a></p>
 </div>
 
 </body>

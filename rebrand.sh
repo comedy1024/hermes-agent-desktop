@@ -10,20 +10,15 @@ set -e
 echo "[rebrand] Starting Hermes Agent Desktop rebranding..."
 
 # ---- 1. Find and replace noVNC watermark/logo ----
-# noVNC typically stores its web UI in /usr/share/novnc/ or /opt/noVNC/
-# The watermark is usually in vnc.html or an overlay CSS/JS file
 NOVNC_DIRS="/usr/share/novnc /opt/noVNC /usr/share/websockify /opt/websockify"
 
 for dir in $NOVNC_DIRS; do
     if [ -d "$dir" ]; then
         echo "[rebrand] Scanning noVNC directory: $dir"
 
-        # Find HTML files that might contain branding
         find "$dir" -name '*.html' -o -name '*.js' -o -name '*.css' | while read f; do
-            # Check for OpenClaw/tunmax references
             if grep -li 'openclaw\|tunmax\|by b\.z\|OpenClaw_Computer' "$f" 2>/dev/null; then
                 echo "[rebrand] Found branding in: $f"
-                # Replace brand text
                 sed -i 's/tunmax\/OpenClaw_Computer/comedy1024\/hermes-agent-desktop/g' "$f"
                 sed -i 's/tunmax\/openclaw_computer/comedy1024\/hermes-agent-desktop/g' "$f"
                 sed -i 's/OpenClaw_Computer/Hermes Agent Desktop/g' "$f"
@@ -32,7 +27,6 @@ for dir in $NOVNC_DIRS; do
                 sed -i 's/by b\.z/by comedy1024/g' "$f"
                 sed -i 's/by b\.z\./by comedy1024/g' "$f"
                 sed -i 's/tunmax/comedy1024/g' "$f"
-                # Also hide/remove any overlay watermark divs
                 sed -i 's/\(.*[Ww]atermark.*\)/<!-- removed watermark -->/g' "$f"
                 sed -i 's/\(.*[Ll]ogo.*[Oo]pen[Cc]law.*\)/<!-- removed openclaw logo -->/g' "$f"
             fi
@@ -41,7 +35,6 @@ for dir in $NOVNC_DIRS; do
 done
 
 # ---- 2. Search for watermark in noVNC launch scripts ----
-# Some implementations use start.sh or similar scripts to inject HTML
 find / -maxdepth 4 \( -name 'start.sh' -o -name 'start-novnc.sh' -o -name 'novnc.sh' \) 2>/dev/null | while read f; do
     if grep -li 'openclaw\|tunmax\|by b\.z\|watermark\|logo' "$f" 2>/dev/null; then
         echo "[rebrand] Found branding in script: $f"
@@ -87,9 +80,6 @@ PLASMA_RC="/root/.config/plasma-org.kde.plasma.desktop-appletsrc"
 
 if [ -f "$PLASMA_RC" ]; then
     echo "[rebrand] Updating KDE Plasma wallpaper config..."
-
-    # Find existing wallpaper setting and replace it
-    # KDE uses "Image=file:///path/to/wallpaper" format
     sed -i 's|Image=.*|Image=file:///usr/share/wallpapers/hermes-agent-desktop|g' "$PLASMA_RC"
 else
     echo "[rebrand] Creating KDE Plasma wallpaper config..."
@@ -110,14 +100,9 @@ find /root/Desktop -name '*openclaw*' -o -name '*OpenClaw*' -o -name '*copaw*' 2
     rm -f "$f"
 done
 
-# Remove OpenClaw's "使用帮助.html" from desktop
-if [ -f "/root/Desktop/使用帮助.html" ]; then
-    echo "[rebrand] Removing OpenClaw help page: /root/Desktop/使用帮助.html"
-    rm -f "/root/Desktop/使用帮助.html"
-fi
-
-# Remove any other Chinese-named help files from OpenClaw
-find /root/Desktop -name '*使用帮助*' -o -name '*帮助*' 2>/dev/null | while read f; do
+# Remove OpenClaw help file (使用帮助.html)
+rm -f /root/Desktop/使用帮助.html 2>/dev/null || true
+find /root/Desktop -name '*帮助*' 2>/dev/null | while read f; do
     echo "[rebrand] Removing: $f"
     rm -f "$f"
 done
@@ -131,7 +116,6 @@ done
 # ---- 6. Search for and clean up any other branding files ----
 echo "[rebrand] Searching for remaining brand references..."
 
-# Check common locations for brand images/logos
 BRAND_LOCATIONS="
 /root/.openclaw
 /root/.config/openclaw

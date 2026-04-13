@@ -1,7 +1,7 @@
 #!/bin/bash
 # ================================================================
 # hermes-agent-desktop entrypoint
-# Starts: noVNC desktop + Hermes Agent Gateway + Pan UI
+# Starts: noVNC desktop + Hermes WebUI + Hermes Agent Gateway
 # All processes managed by supervisord
 # ================================================================
 set -e
@@ -11,11 +11,12 @@ HERMES_INSTALL="/opt/hermes"
 
 echo "================================================"
 echo "  hermes-agent-desktop"
-echo "  Hermes Agent + Pan UI (i18n) in Linux GUI"
+echo "  Hermes Agent + Hermes WebUI in Linux GUI"
 echo "================================================"
 
 # ---- Bootstrap Hermes Agent config (from official docker/entrypoint.sh) ----
 mkdir -p "$HERMES_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
+mkdir -p "$HERMES_HOME/.hermes/webui-mvp"
 
 # .env
 if [ ! -f "$HERMES_HOME/.env" ]; then
@@ -49,8 +50,8 @@ fi
 echo "================================================"
 echo "  Services:"
 echo "  - noVNC Desktop:  http://localhost:7860"
-echo "  - Pan UI:         http://localhost:3199"
-echo "  - Hermes Gateway: auto-managed by Pan UI (port 8642)"
+echo "  - Hermes WebUI:   http://localhost:8787"
+echo "  - Hermes Gateway: auto-managed by WebUI (port 8642)"
 echo "================================================"
 
 # ---- Apply Hermes wallpaper at runtime ----
@@ -74,7 +75,7 @@ for f in $(find /usr/share/novnc /opt/noVNC -type f -name '*.html' 2>/dev/null);
     fi
 done
 
-# Start supervisord (manages all 3 services)
+# Start supervisord (manages all services)
 # Try common paths - supervisor package may install to /usr/sbin or /usr/bin
 SUPERVISORD=$(command -v supervisord || echo "/usr/sbin/supervisord")
 exec "$SUPERVISORD" -c /etc/supervisor/conf.d/hermes.conf

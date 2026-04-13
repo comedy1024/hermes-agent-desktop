@@ -20,6 +20,5 @@ Thumbs.db
 *.tmp
 *.log
 
-# Pan UI 构建产物
-pan-ui-built/
-pan-ui-source/
+# Hermes WebUI 构建产物
+webui-built/
