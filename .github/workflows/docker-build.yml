@@ -13,7 +13,7 @@ on:
     - cron: '0 2 * * *'
 
 permissions:
-  contents: read
+  contents: write   # needed to commit upstream hash cache
   packages: write
 
 concurrency:
@@ -21,9 +21,110 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ----------------------------------------------------------------
+  # Job 1 (schedule only): check if upstream repos have new commits.
+  # Skips the build when nothing changed.
+  # ----------------------------------------------------------------
+  check-upstream:
+    runs-on: ubuntu-latest
+    # Only run this job when triggered by the cron schedule
+    if: github.event_name == 'schedule'
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch upstream commit hashes
+        id: fetch
+        run: |
+          HERMES_AGENT=$(git ls-remote https://github.com/NousResearch/hermes-agent.git HEAD | cut -f1)
+          HERMES_WEBUI=$(git ls-remote https://github.com/nesquena/hermes-webui.git HEAD | cut -f1)
+          # linuxserver/webtop is the official base image (replaces tunmax/openclaw_computer)
+          BASE_IMAGE=$(docker manifest inspect lscr.io/linuxserver/webtop:ubuntu-kde 2>/dev/null \
+                       | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('config',{}).get('digest','unknown'))" \
+                       || echo "unknown")
+          echo "hermes_agent=${HERMES_AGENT}" >> $GITHUB_OUTPUT
+          echo "hermes_webui=${HERMES_WEBUI}" >> $GITHUB_OUTPUT
+          echo "base_image=${BASE_IMAGE}"      >> $GITHUB_OUTPUT
+          echo "Combined upstream state:"
+          echo "  hermes-agent   : ${HERMES_AGENT}"
+          echo "  hermes-webui   : ${HERMES_WEBUI}"
+          echo "  base image     : ${BASE_IMAGE} (linuxserver/webtop:ubuntu-kde)"
+
+      - name: Load previous upstream hashes
+        id: load-cache
+        run: |
+          CACHE_FILE=".github/upstream-hashes.txt"
+          if [ -f "$CACHE_FILE" ]; then
+            cat "$CACHE_FILE"
+            PREV_AGENT=$(grep '^hermes_agent=' "$CACHE_FILE" | cut -d= -f2)
+            PREV_WEBUI=$(grep '^hermes_webui=' "$CACHE_FILE" | cut -d= -f2)
+            PREV_BASE=$(grep  '^base_image='   "$CACHE_FILE" | cut -d= -f2)
+            echo "prev_hermes_agent=${PREV_AGENT}" >> $GITHUB_OUTPUT
+            echo "prev_hermes_webui=${PREV_WEBUI}" >> $GITHUB_OUTPUT
+            echo "prev_base_image=${PREV_BASE}"    >> $GITHUB_OUTPUT
+          else
+            echo "Cache file not found – treating as first run (will build)"
+            echo "prev_hermes_agent=none" >> $GITHUB_OUTPUT
+            echo "prev_hermes_webui=none" >> $GITHUB_OUTPUT
+            echo "prev_base_image=none"   >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare hashes
+        id: compare
+        run: |
+          CHANGED="false"
+          if [ "${{ steps.fetch.outputs.hermes_agent }}" != "${{ steps.load-cache.outputs.prev_hermes_agent }}" ]; then
+            echo "hermes-agent has new commits"
+            CHANGED="true"
+          fi
+          if [ "${{ steps.fetch.outputs.hermes_webui }}" != "${{ steps.load-cache.outputs.prev_hermes_webui }}" ]; then
+            echo "hermes-webui has new commits"
+            CHANGED="true"
+          fi
+          if [ "${{ steps.fetch.outputs.base_image }}" != "${{ steps.load-cache.outputs.prev_base_image }}" ]; then
+            echo "Base image (linuxserver/webtop:ubuntu-kde) has been updated"
+            CHANGED="true"
+          fi
+          echo "changed=${CHANGED}" >> $GITHUB_OUTPUT
+          echo "Final decision: changed=${CHANGED}"
+
+      - name: Save upstream hashes (only when something changed)
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          mkdir -p .github
+          cat > .github/upstream-hashes.txt << EOF
+          hermes_agent=${{ steps.fetch.outputs.hermes_agent }}
+          hermes_webui=${{ steps.fetch.outputs.hermes_webui }}
+          base_image=${{ steps.fetch.outputs.base_image }}
+          EOF
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/upstream-hashes.txt
+          git commit -m "chore: update upstream hashes [skip ci]" || true
+          git push || true
+
+  # ----------------------------------------------------------------
+  # Job 2: build and push the Docker image.
+  # Runs when:
+  #   - push to main
+  #   - workflow_dispatch (manual trigger)
+  #   - schedule AND check-upstream detected a change
+  # ----------------------------------------------------------------
   build-and-push:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    needs: [check-upstream]
+    # Always-run conditions:
+    #   • not a schedule event  → run directly (push / manual)
+    #   • schedule event        → only run if check-upstream said changed=true
+    if: |
+      always() &&
+      (
+        github.event_name != 'schedule' ||
+        needs.check-upstream.outputs.changed == 'true'
+      )
 
     steps:
       - name: Checkout code
@@ -56,7 +157,7 @@ jobs:
       - name: Test image starts
         run: |
           docker run --rm -d --name test-hermes \
-            -v /tmp/hermes-test:/opt/data \
+            -v /tmp/hermes-test:/config \
             ghcr.io/comedy1024/hermes-agent-desktop:test || true
           sleep 10
           docker logs test-hermes || true

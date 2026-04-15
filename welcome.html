@@ -140,11 +140,11 @@
         <p>Hermes Agent 的全功能 Web 界面：流式聊天、文件浏览器、Skill 管理、记忆编辑、语音输入、多主题</p>
         <div class="url">http://localhost:8787</div>
     </a>
-    <a class="card" href="http://localhost:7860" target="_blank">
+    <a class="card" href="http://localhost:3000" target="_blank">
         <div class="icon">🖥️</div>
         <h3>noVNC 桌面</h3>
         <p>通过浏览器访问完整 Linux KDE 桌面环境，可运行终端、文件管理器等</p>
-        <div class="url">http://localhost:7860</div>
+        <div class="url">http://localhost:3000</div>
     </a>
     <a class="card" href="http://localhost:8642" target="_blank">
         <div class="icon">🔌</div>
@@ -159,7 +159,8 @@
 <table>
     <thead><tr><th>端口</th><th>服务</th><th>说明</th></tr></thead>
     <tbody>
-        <tr><td><code>7860</code></td><td>noVNC</td><td>浏览器访问 Linux KDE 桌面</td></tr>
+        <tr><td><code>3000</code></td><td>noVNC</td><td>浏览器访问 Linux KDE 桌面（HTTP）</td></tr>
+        <tr><td><code>3001</code></td><td>noVNC</td><td>浏览器访问 Linux KDE 桌面（HTTPS）</td></tr>
         <tr><td><code>8787</code></td><td>Hermes WebUI</td><td>Web 管理界面（聊天/配置/运维）</td></tr>
         <tr><td><code>8642</code></td><td>Hermes Gateway</td><td>OpenAI 兼容 API（WebUI 自动管理）</td></tr>
     </tbody>
@@ -187,13 +188,13 @@
 <table>
     <thead><tr><th>文件</th><th>路径</th><th>说明</th></tr></thead>
     <tbody>
-        <tr><td>环境变量</td><td><code>/opt/data/.env</code></td><td>API Keys、模型配置</td></tr>
-        <tr><td>主配置</td><td><code>/opt/data/config.yaml</code></td><td>Hermes Agent 配置</td></tr>
-        <tr><td>Soul</td><td><code>/opt/data/SOUL.md</code></td><td>Agent 人格定义</td></tr>
-        <tr><td>Skills</td><td><code>/opt/data/skills/</code></td><td>78 个预装技能</td></tr>
-        <tr><td>记忆</td><td><code>/opt/data/memories/</code></td><td>对话记忆存储</td></tr>
-        <tr><td>会话</td><td><code>/opt/data/sessions/</code></td><td>聊天会话历史</td></tr>
-        <tr><td>WebUI 状态</td><td><code>/opt/data/.hermes/webui-mvp/</code></td><td>WebUI 配置与状态</td></tr>
+        <tr><td>环境变量</td><td><code>/config/hermes-data/.env</code></td><td>API Keys、模型配置</td></tr>
+        <tr><td>主配置</td><td><code>/config/hermes-data/config.yaml</code></td><td>Hermes Agent 配置</td></tr>
+        <tr><td>Soul</td><td><code>/config/hermes-data/SOUL.md</code></td><td>Agent 人格定义</td></tr>
+        <tr><td>Skills</td><td><code>/config/hermes-data/skills/</code></td><td>78 个预装技能</td></tr>
+        <tr><td>记忆</td><td><code>/config/hermes-data/memories/</code></td><td>对话记忆存储</td></tr>
+        <tr><td>会话</td><td><code>/config/hermes-data/sessions/</code></td><td>聊天会话历史</td></tr>
+        <tr><td>WebUI 状态</td><td><code>/config/hermes-data/.hermes/webui-mvp/</code></td><td>WebUI 配置与状态</td></tr>
     </tbody>
 </table>
 
@@ -228,10 +229,10 @@
 <table>
     <thead><tr><th>变量</th><th>默认值</th><th>说明</th></tr></thead>
     <tbody>
-        <tr><td><code>HERMES_HOME</code></td><td><code>/opt/data</code></td><td>数据存储目录</td></tr>
+        <tr><td><code>HERMES_HOME</code></td><td><code>/config/hermes-data</code></td><td>数据存储目录</td></tr>
         <tr><td><code>HERMES_WEBUI_PORT</code></td><td><code>8787</code></td><td>WebUI 服务端口</td></tr>
         <tr><td><code>HERMES_WEBUI_PASSWORD</code></td><td>（空）</td><td>可选的 WebUI 访问密码</td></tr>
-        <tr><td><code>ROOT_PASSWD</code></td><td><code>123456</code></td><td>桌面锁屏密码</td></tr>
+        <tr><td><code>PASSWORD</code></td><td>（空）</td><td>桌面访问密码（webtop）</td></tr>
         <tr><td><code>PYTHONUNBUFFERED</code></td><td><code>1</code></td><td>Python 输出无缓冲</td></tr>
     </tbody>
 </table>
@@ -243,8 +244,8 @@
 </div>
 <div class="cmd-block">
     <span style="color:var(--text-muted)"># Docker 运行时挂载数据卷</span><br>
-    docker run -d -p 7860:7860 -p 8787:8787 \<br>
-    &nbsp;&nbsp;-v hermes-data:/opt/data \<br>
+    docker run -d -p 3000:3000 -p 3001:3001 -p 8787:8787 \<br>
+    &nbsp;&nbsp;-v hermes-data:/config \<br>
     &nbsp;&nbsp;ghcr.io/comedy1024/hermes-agent-desktop:latest
 </div>
 
@@ -270,7 +271,7 @@
 
 <div class="footer">
     <p>Hermes Agent Desktop · Built with ❤️ by <a href="https://github.com/comedy1024">comedy1024</a></p>
-    <p>Powered by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> + <a href="https://github.com/nesquena/hermes-webui">Hermes WebUI</a> + <a href="https://github.com/TunMax/openclaw_computer">OpenClaw Computer</a></p>
+    <p>Powered by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> + <a href="https://github.com/nesquena/hermes-webui">Hermes WebUI</a> + <a href="https://github.com/linuxserver/docker-webtop">LinuxServer Webtop (KDE)</a></p>
 </div>
 
 </body>

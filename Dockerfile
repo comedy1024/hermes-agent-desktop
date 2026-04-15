@@ -1,14 +1,15 @@
 # ================================================================
 # hermes-agent-desktop: Linux GUI Desktop + Hermes Agent + Hermes WebUI
-# Based on: ghcr.io/tunmax/openclaw_computer (noVNC Linux Desktop)
+# Based on: lscr.io/linuxserver/webtop:ubuntu-kde (official LinuxServer.io)
 # ================================================================
 #
 # Build stages:
 #   1. Build Hermes WebUI (Python + vanilla JS, lightweight)
-#   2. Combine everything into the openclaw desktop image
+#   2. Combine everything into the official KDE desktop image
 #
 # Ports:
-#   7860 - noVNC web desktop
+#   3000 - noVNC web desktop (HTTP)
+#   3001 - noVNC web desktop (HTTPS)
 #   8787 - Hermes WebUI
 #   8642 - Hermes Agent Gateway API
 
@@ -23,18 +24,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && \
     rm -rf .git
 
 # ---- Stage 2: Final image ----
-FROM ghcr.io/tunmax/openclaw_computer:latest
+# Official LinuxServer.io Ubuntu KDE desktop (active maintenance, multi-arch)
+# https://docs.linuxserver.io/images/docker-webtop/
+FROM lscr.io/linuxserver/webtop:ubuntu-kde
 
 LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent-desktop
 LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux GUI Desktop"
 LABEL org.opencontainers.image.licenses=MIT
 
-# Install all system dependencies (matching official hermes-agent Dockerfile)
+# Install all system dependencies
+# webtop uses apt, we run as root for build-time setup
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc \
     python3 python3-pip python3-venv python3-dev \
-    libffi-dev ripgrep ffmpeg procps supervisor curl \
+    libffi-dev ripgrep ffmpeg procps curl git \
+    nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast Python package management
@@ -53,14 +58,10 @@ RUN git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.
     npm cache clean --force && \
     rm -rf /root/.cache /root/.npm
 
-# Copy Hermes Agent docker config templates
-# (hermes entrypoint.sh will bootstrap config from these)
-RUN chmod +x /opt/hermes/docker/entrypoint.sh
-
 # Set up Hermes environment
-ENV HERMES_HOME=/opt/data
+ENV HERMES_HOME=/config/hermes-data
 ENV PYTHONUNBUFFERED=1
-RUN mkdir -p /opt/data
+RUN mkdir -p /config/hermes-data
 
 # Copy Hermes WebUI from builder stage
 COPY --from=webui-builder /build /opt/hermes-webui
@@ -68,8 +69,6 @@ COPY --from=webui-builder /build /opt/hermes-webui
 # ---- Set up Hermes WebUI with shared hermes-agent Python environment ----
 # Hermes WebUI deeply integrates with hermes-agent by importing its Python
 # modules directly (not via HTTP). It needs hermes-agent in its Python path.
-# We create a venv for WebUI, install its minimal deps (pyyaml only),
-# then install hermes-agent into the same venv so WebUI can import it.
 RUN cd /opt/hermes-webui && \
     python3 -m venv venv && \
     venv/bin/pip install --no-cache-dir -r requirements.txt && \
@@ -80,100 +79,154 @@ ENV HERMES_WEBUI_AGENT_DIR=/opt/hermes
 ENV HERMES_WEBUI_PYTHON=/opt/hermes-webui/venv/bin/python
 ENV HERMES_WEBUI_HOST=0.0.0.0
 ENV HERMES_WEBUI_PORT=8787
-ENV HERMES_WEBUI_STATE_DIR=/opt/data/.hermes/webui-mvp
-ENV HERMES_WEBUI_DEFAULT_WORKSPACE=/opt/data
+ENV HERMES_WEBUI_STATE_DIR=/config/hermes-data/.hermes/webui-mvp
+ENV HERMES_WEBUI_DEFAULT_WORKSPACE=/config/hermes-data
 # Touch container marker so WebUI knows it's in Docker
 RUN touch /.within_container
 
-# Copy our configuration files
-# Rename base image's entrypoint so we can call it from supervisord
-RUN mv /entrypoint.sh /opt/openclaw-entrypoint.sh
-COPY supervisord.conf /etc/supervisor/conf.d/hermes.conf
-COPY entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/entrypoint.sh /opt/openclaw-entrypoint.sh && \
-    mkdir -p /var/log/supervisor
+# ---- Install Hermes WebUI as a supervised service ----
+# webtop uses s6-overlay for init, custom services go in /etc/s6-overlay/s6-rc.d/
+# We also add it to /custom-cont-init.d/ so it starts on each boot
+COPY hermes-webui-service.sh /opt/hermes-webui-service.sh
+RUN chmod +x /opt/hermes-webui-service.sh
 
-# ---- Rebrand from OpenClaw to Hermes Agent Desktop ----
+# Register hermes-webui as a background service via custom-cont-init.d
+RUN mkdir -p /custom-cont-init.d && \
+    printf '#!/bin/bash\n# Start Hermes WebUI in background\nnohup /opt/hermes-webui-service.sh > /config/logs/hermes-webui.log 2>&1 &\n' \
+    > /custom-cont-init.d/10-hermes-webui.sh && \
+    chmod +x /custom-cont-init.d/10-hermes-webui.sh
+
 # Copy our welcome page and wallpaper
 COPY welcome.html /opt/welcome.html
 COPY wallpaper.png /opt/hermes-wallpaper.png
-COPY rebrand.sh /tmp/rebrand.sh
 
-# Run comprehensive rebrand
-RUN chmod +x /tmp/rebrand.sh && \
-    bash /tmp/rebrand.sh && \
-    rm -f /tmp/rebrand.sh
-
-# ---- Additional deep scan for remaining brand references ----
-# Search noVNC and desktop stack for any remaining "tunmax", "OpenClaw", "b.z" text
-RUN echo "[deep-rebrand] Scanning for remaining brand references..." && \
-    for f in $(find /usr/share/novnc /opt/noVNC /usr/share/websockify /opt/websockify \
-               /usr/share/krfb /usr/share/remote-desktop \
-               -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) 2>/dev/null); do \
-        if grep -qi 'openclaw\|tunmax\|by b\.z\|OpenClaw_Computer\|openclaw_computer' "$f" 2>/dev/null; then \
-            echo "[deep-rebrand] Patching brand text in: $f" && \
-            sed -i 's/tunmax\/OpenClaw_Computer/comedy1024\/hermes-agent-desktop/gI' "$f" && \
-            sed -i 's/tunmax\/openclaw_computer/comedy1024\/hermes-agent-desktop/gI' "$f" && \
-            sed -i 's/OpenClaw_Computer/Hermes Agent Desktop/gI' "$f" && \
-            sed -i 's/OpenClaw Computer/Hermes Agent Desktop/gI' "$f" && \
-            sed -i 's/openclaw_computer/hermes-agent-desktop/gI' "$f" && \
-            sed -i 's/by b\.z\./by comedy1024/gI' "$f" && \
-            sed -i 's/by b\.z/by comedy1024/gI' "$f" && \
-            sed -i 's/tunmax/comedy1024/gI' "$f"; \
-        fi; \
-    done && \
-    for f in $(find / -maxdepth 4 -type f \( -name 'start.sh' -o -name 'start-novnc.sh' \
-               -o -name 'entrypoint.sh' -o -name 'novnc*.sh' \) 2>/dev/null \
-               | grep -v '/opt/hermes/'); do \
-        if grep -qi 'openclaw\|tunmax\|by b\.z' "$f" 2>/dev/null; then \
-            echo "[deep-rebrand] Patching brand text in script: $f" && \
-            sed -i 's/tunmax\/OpenClaw_Computer/comedy1024\/hermes-agent-desktop/gI' "$f" && \
-            sed -i 's/OpenClaw_Computer/Hermes Agent Desktop/gI' "$f" && \
-            sed -i 's/OpenClaw Computer/Hermes Agent Desktop/gI' "$f" && \
-            sed -i 's/by b\.z/by comedy1024/gI' "$f" && \
-            sed -i 's/tunmax/comedy1024/gI' "$f"; \
-        fi; \
-    done && \
-    find / -maxdepth 5 -type f \( -name '*openclaw*logo*' -o -name '*openclaw*icon*' \
-       -o -name '*OpenClaw*logo*' -o -name '*OpenClaw*icon*' \) 2>/dev/null | \
-        xargs rm -f 2>/dev/null || true && \
-    echo "[deep-rebrand] Deep scan complete"
-
-# ---- Apply KDE wallpaper via Plasma config ----
-RUN echo "[wallpaper] Setting Hermes wallpaper in KDE Plasma config..." && \
-    PLASMA_RC="/root/.config/plasma-org.kde.plasma.desktop-appletsrc" && \
-    if [ -f "$PLASMA_RC" ]; then \
-        sed -i 's|Image=.*|Image=file:///usr/share/wallpapers/hermes-agent-desktop|g' "$PLASMA_RC"; \
+# ---- Install wallpaper ----
+# Strategy: install to MULTIPLE locations so it works regardless of KDE config state:
+#   a) Replace the default KDE "Next" theme images (guaranteed to show)
+#   b) Install as named wallpaper package for manual selection
+#   c) Set system-level default via /etc/xdg/plasmarc
+RUN WALLPAPER=/opt/hermes-wallpaper.png && \
+    \
+    # Location a: replace every image in the KDE default "Next" wallpaper theme
+    if [ -d /usr/share/wallpapers/Next ]; then \
+        find /usr/share/wallpapers/Next/contents/images -type f \
+            \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' \) | \
+            while read img; do cp "$WALLPAPER" "$img"; done; \
     fi && \
-    mkdir -p /usr/share/wallpapers/Next/contents 2>/dev/null && \
-    cp -f /opt/hermes-wallpaper.png /usr/share/wallpapers/Next/contents/images.png 2>/dev/null || true && \
-    mkdir -p /root/.config && \
-    printf '[Wallpaper]\ndefaultWallpaperTheme=hermes-agent-desktop\n' > /root/.config/plasma-wallpaper.conf && \
-    echo "[wallpaper] Done"
+    mkdir -p /usr/share/wallpapers/Next/contents/images && \
+    cp "$WALLPAPER" /usr/share/wallpapers/Next/contents/images/1920x1080.png && \
+    \
+    # Location b: named wallpaper package (KDE 5/6 compatible)
+    mkdir -p /usr/share/wallpapers/hermes-agent-desktop/contents/images && \
+    cp "$WALLPAPER" /usr/share/wallpapers/hermes-agent-desktop/contents/images/1920x1080.png && \
+    cp "$WALLPAPER" /usr/share/wallpapers/hermes-agent-desktop/contents/images/1280x800.png && \
+    printf '[Desktop Entry]\nName=Hermes Agent Desktop\nX-KDE-PluginInfo-Name=hermes-agent-desktop\nX-KDE-PluginInfo-Author=comedy1024\nX-KDE-PluginInfo-Version=1.0\nX-KDE-PluginInfo-License=MIT\n' \
+        > /usr/share/wallpapers/hermes-agent-desktop/metadata.desktop && \
+    printf '{"KPlugin":{"Authors":[{"Name":"comedy1024"}],"Id":"hermes-agent-desktop","Name":"Hermes Agent Desktop","License":"MIT","Version":"1.0"}}\n' \
+        > /usr/share/wallpapers/hermes-agent-desktop/metadata.json && \
+    \
+    # Location c: system-level KDE default wallpaper config
+    mkdir -p /etc/xdg && \
+    printf '[Wallpapers]\ndefaultWallpaper=hermes-agent-desktop\n' > /etc/xdg/plasmarc && \
+    \
+    echo "[wallpaper] Installed to all KDE wallpaper locations"
+
+# ---- Runtime wallpaper + init script ----
+# Called by custom-cont-init.d at every boot to apply wallpaper to live KDE session
+RUN printf '#!/bin/bash\n\
+# Apply Hermes wallpaper to KDE Plasma at runtime.\n\
+WALLPAPER_PATH="file:///usr/share/wallpapers/hermes-agent-desktop/contents/images/1920x1080.png"\n\
+PLASMA_RC="/config/.config/plasma-org.kde.plasma.desktop-appletsrc"\n\
+\n\
+# Method 1: patch appletsrc if it exists\n\
+if [ -f "$PLASMA_RC" ]; then\n\
+    sed -i "s|^Image=.*|Image=${WALLPAPER_PATH}|g" "$PLASMA_RC"\n\
+    sed -i "s|^wallpaperplugin=.*|wallpaperplugin=org.kde.image|g" "$PLASMA_RC"\n\
+    echo "[wallpaper] appletsrc patched"\n\
+fi\n\
+\n\
+# Method 2: plasma-apply-wallpaperimage (Plasma 5.23+)\n\
+if command -v plasma-apply-wallpaperimage >/dev/null 2>&1; then\n\
+    DISPLAY=:1 plasma-apply-wallpaperimage \\\n\
+        /usr/share/wallpapers/hermes-agent-desktop/contents/images/1920x1080.png \\\n\
+        2>/dev/null && echo "[wallpaper] plasma-apply-wallpaperimage done" || true\n\
+fi\n\
+\n\
+# Method 3: kwriteconfig5\n\
+if command -v kwriteconfig5 >/dev/null 2>&1; then\n\
+    kwriteconfig5 --file plasmarc \\\n\
+        --group "Wallpapers" --key "defaultWallpaper" "hermes-agent-desktop" 2>/dev/null || true\n\
+fi\n\
+\n\
+echo "[wallpaper] Apply complete"\n\
+' > /opt/apply-wallpaper.sh && chmod +x /opt/apply-wallpaper.sh
+
+# Register wallpaper apply as boot init
+RUN printf '#!/bin/bash\n/opt/apply-wallpaper.sh\n' \
+    > /custom-cont-init.d/05-apply-wallpaper.sh && \
+    chmod +x /custom-cont-init.d/05-apply-wallpaper.sh
 
 # Create Hermes desktop shortcuts
-RUN printf '[Desktop Entry]\nType=Application\nName=Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8787\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' > /root/Desktop/hermes-webui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' > /root/Desktop/hermes-welcome.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /opt/data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' > /root/Desktop/hermes-terminal.desktop && \
-    chmod +x /root/Desktop/hermes-*.desktop
+RUN mkdir -p /config/Desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8787\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
+        > /config/Desktop/hermes-webui.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' \
+        > /config/Desktop/hermes-welcome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /config/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
+        > /config/Desktop/hermes-terminal.desktop && \
+    chmod +x /config/Desktop/hermes-*.desktop
 
-# Create KDE autostart entries: open WebUI + Welcome page + Terminal on desktop launch
-RUN mkdir -p /root/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && xdg-open http://localhost:8787"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-webui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && xdg-open /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-welcome.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /opt/data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' > /root/.config/autostart/hermes-terminal.desktop
+# Create KDE autostart entries
+RUN mkdir -p /config/.config/autostart && \
+    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && xdg-open http://localhost:8787"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+        > /config/.config/autostart/hermes-webui.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && xdg-open /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+        > /config/.config/autostart/hermes-welcome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /config/hermes-data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+        > /config/.config/autostart/hermes-terminal.desktop
+
+# ---- Bootstrap init script ----
+# Runs once at first boot to initialize Hermes Agent config files
+RUN printf '#!/bin/bash\n\
+# Bootstrap Hermes Agent config (runs once at first boot)\n\
+HERMES_HOME="/config/hermes-data"\n\
+HERMES_INSTALL="/opt/hermes"\n\
+mkdir -p "$HERMES_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}\n\
+mkdir -p "$HERMES_HOME/.hermes/webui-mvp"\n\
+mkdir -p /config/logs\n\
+\n\
+if [ ! -f "$HERMES_HOME/.env" ] && [ -f "$HERMES_INSTALL/.env.example" ]; then\n\
+    cp "$HERMES_INSTALL/.env.example" "$HERMES_HOME/.env"\n\
+    echo "[hermes] Created .env from template"\n\
+fi\n\
+\n\
+if [ ! -f "$HERMES_HOME/config.yaml" ] && [ -f "$HERMES_INSTALL/cli-config.yaml.example" ]; then\n\
+    cp "$HERMES_INSTALL/cli-config.yaml.example" "$HERMES_HOME/config.yaml"\n\
+    echo "[hermes] Created config.yaml from template"\n\
+fi\n\
+\n\
+if [ ! -f "$HERMES_HOME/SOUL.md" ] && [ -f "$HERMES_INSTALL/docker/SOUL.md" ]; then\n\
+    cp "$HERMES_INSTALL/docker/SOUL.md" "$HERMES_HOME/SOUL.md"\n\
+    echo "[hermes] Created SOUL.md from template"\n\
+fi\n\
+\n\
+if [ -d "$HERMES_INSTALL/skills" ] && [ -f "$HERMES_INSTALL/tools/skills_sync.py" ]; then\n\
+    python3 "$HERMES_INSTALL/tools/skills_sync.py" 2>/dev/null || true\n\
+fi\n\
+\n\
+echo "[hermes] Bootstrap complete"\n\
+' > /custom-cont-init.d/20-hermes-bootstrap.sh && \
+    chmod +x /custom-cont-init.d/20-hermes-bootstrap.sh
 
 # Expose ports
-# 7860 - noVNC (from openclaw base)
-# 8787 - Hermes WebUI
-# 8642 - Hermes Agent Gateway API
-EXPOSE 7860 8787 8642
+# 3000/3001 - webtop KDE desktop (HTTP/HTTPS)
+# 8787      - Hermes WebUI
+# 8642      - Hermes Agent Gateway API
+EXPOSE 3000 3001 8787 8642
 
-# Data volume
-VOLUME ["/opt/data"]
+# Data volume — webtop uses /config for all persistent data
+VOLUME ["/config"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8787/health || exit 1
-
-ENTRYPOINT ["/opt/entrypoint.sh"]
