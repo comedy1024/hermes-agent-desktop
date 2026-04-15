@@ -37,10 +37,11 @@ LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux
 LABEL org.opencontainers.image.licenses=MIT
 
 # Install system dependencies
-# NOTE: webtop already includes Node.js 22 via nodesource — do NOT install nodejs/npm from apt (causes conflicts)
 # NOTE: cmake is needed for python-olm (E2EE encryption for WhatsApp bridge)
 # NOTE: CMAKE_POLICY_VERSION_MINIMUM=3.5 needed because python-olm's bundled libolm
 #       uses cmake_minimum_required(VERSION 2.6) which is rejected by CMake 4.x+
+# NOTE: webtop ships a partial nodesource Node.js 22 WITHOUT npm — we reinstall
+#       via the official NodeSource setup script to get the full nodejs+npm bundle
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc cmake \
@@ -48,6 +49,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep ffmpeg procps curl git \
     && rm -rf /var/lib/apt/lists/*
 ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
+
+# Ensure Node.js 22 + npm are fully installed (webtop's nodejs lacks npm)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install uv (Python package manager with built-in Python version management)
 # uv will download and manage Python 3.13 independently of the system Python
