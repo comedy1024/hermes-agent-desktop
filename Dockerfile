@@ -34,12 +34,12 @@ LABEL org.opencontainers.image.licenses=MIT
 
 # Install all system dependencies
 # webtop uses apt, we run as root for build-time setup
+# NOTE: webtop already includes Node.js 22 via nodesource — do NOT install nodejs/npm from apt (causes conflicts)
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc \
     python3 python3-pip python3-venv python3-dev \
     libffi-dev ripgrep ffmpeg procps curl git \
-    nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast Python package management
