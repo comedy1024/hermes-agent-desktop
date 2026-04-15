@@ -41,14 +41,20 @@ LABEL org.opencontainers.image.licenses=MIT
 
 # Install system dependencies
 # Debian 13 Trixie has Python 3.13, cmake 3.31 — all compatible with hermes-agent
+# NOTE: webtop pre-installs nodesource Node.js 22 which CONFLICTS with Debian's npm package.
+# We use the NodeSource setup script instead to get the full nodejs+npm bundle.
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc cmake \
     python3 python3-pip python3-venv python3-dev \
     libffi-dev libolm-dev \
     ripgrep ffmpeg procps curl git \
-    nodejs npm \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 22 + npm via NodeSource (webtop's nodejs lacks npm)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # ---- Clone and install Hermes Agent ----
 # Debian 13's Python 3.13 matches the official hermes-agent Dockerfile.
