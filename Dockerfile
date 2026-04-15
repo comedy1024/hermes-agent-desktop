@@ -56,6 +56,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
+# Install uv for fast Python package management
+# pip's resolver fails with "resolution-too-deep" on hermes-agent[all]'s complex
+# dependency graph. uv's resolver handles it efficiently (same as official Dockerfile).
+# NOTE: webtop sets HOME=/config, so uv installs to /config/.local/bin
+ENV HOME="/config"
+RUN curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh
+ENV PATH="/config/.local/bin:$PATH"
+
 # ---- Clone and install Hermes Agent ----
 # Debian 13's Python 3.13 matches the official hermes-agent Dockerfile.
 # We create a venv at /opt/hermes-venv and install hermes-agent[all] into it.
@@ -63,7 +71,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 RUN python3 -m venv /opt/hermes-venv && \
     git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
     cd /opt/hermes && \
-    /opt/hermes-venv/bin/pip install --no-cache-dir -e ".[all]" && \
+    uv pip install --python /opt/hermes-venv/bin/python --no-cache -e ".[all]" && \
     npm install --prefer-offline --no-audit && \
     npx playwright install --with-deps chromium --only-shell && \
     cd scripts/whatsapp-bridge && \
