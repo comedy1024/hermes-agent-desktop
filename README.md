@@ -1,6 +1,6 @@
 # hermes-agent-desktop
 
-基于 [LinuxServer.io Webtop (Ubuntu KDE)](https://github.com/linuxserver/docker-webtop) + [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) + [Hermes WebUI](https://github.com/nesquena/hermes-webui) 打包的一体化 Docker 镜像。
+基于 [LinuxServer.io Webtop (Debian KDE)](https://github.com/linuxserver/docker-webtop) + [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) + [Hermes WebUI](https://github.com/nesquena/hermes-webui) 打包的一体化 Docker 镜像。
 
 ## 镜像地址
 
@@ -10,7 +10,7 @@ ghcr.io/comedy1024/hermes-agent-desktop:latest
 
 ## 功能特性
 
-- 🖥️ **Linux GUI 桌面** — 通过 noVNC 在浏览器中访问完整 Ubuntu KDE 桌面环境
+- 🖥️ **Linux GUI 桌面** — 通过 noVNC 在浏览器中访问完整 Debian KDE 桌面环境
 - 🤖 **Hermes Agent** — 自演化 AI Agent 框架，支持 OpenAI / Anthropic / DeepSeek / Ollama 等
 - 🌐 **Hermes WebUI** — 社区最活跃的 Hermes Agent Web 管理界面（1.6k+ Stars）
 - 🔧 **全功能管理** — 流式聊天、文件浏览器、技能管理、记忆编辑、语音输入、7 种主题
@@ -21,8 +21,8 @@ ghcr.io/comedy1024/hermes-agent-desktop:latest
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| `3000` | noVNC | Linux KDE 桌面（浏览器访问，HTTP） |
-| `3001` | noVNC | Linux KDE 桌面（浏览器访问，HTTPS） |
+| `3000` | noVNC | Debian KDE 桌面（浏览器访问，HTTP） |
+| `3001` | noVNC | Debian KDE 桌面（浏览器访问，HTTPS） |
 | `8787` | Hermes WebUI | Web 管理界面（聊天/配置/运维）|
 | `8642` | Hermes Gateway | OpenAI 兼容 API（WebUI 自动管理）|
 
@@ -167,12 +167,11 @@ EXPOSE 8642
 
 ### 构建流程
 
-1. Stage 1：clone hermes-webui 源码
-2. Stage 2：基于官方 `lscr.io/linuxserver/webtop:ubuntu-kde`
-3. 安装 hermes-agent（系统 Python + WebUI venv 双份，深度集成）
-4. 安装 Playwright + WhatsApp bridge
-5. 设置桌面快捷方式、壁纸、开机自启
-6. 推送多架构镜像到 ghcr.io
+1. 基于 `lscr.io/linuxserver/webtop:debian-kde`（Debian 13 Trixie + KDE）
+2. 使用 uv 安装 hermes-agent[all] 到 /opt/hermes-venv（CLI + WebUI 共享）
+3. NodeSource 安装 Node.js 22 + npm（Playwright + WhatsApp bridge）
+4. 设置桌面快捷方式、壁纸、开机自启
+5. 推送多架构镜像到 ghcr.io
 
 ## 相关项目
 
