@@ -72,6 +72,8 @@ RUN git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.
     . /opt/hermes-venv/bin/activate && \
     uv pip install --no-cache -e ".[all]" && \
     npm install --prefer-offline --no-audit && \
+    sed -i 's/VERSION_ID="26.04"/VERSION_ID="24.04"/' /etc/os-release && \
+    sed -i 's/ubuntu26.04/ubuntu24.04/g' /etc/os-release && \
     npx playwright install --with-deps chromium --only-shell && \
     cd scripts/whatsapp-bridge && \
     npm install --prefer-offline --no-audit && \
