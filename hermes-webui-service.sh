@@ -17,5 +17,5 @@ sleep 3
 
 echo "[hermes-webui] Starting Hermes WebUI on port 8787..."
 
-exec "$WEBUI_DIR/venv/bin/python" "$WEBUI_DIR/server.py" \
+exec /opt/hermes-venv/bin/python "$WEBUI_DIR/server.py" \
     2>&1 | tee "$LOG_DIR/hermes-webui.log"
