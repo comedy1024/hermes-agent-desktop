@@ -48,8 +48,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install uv (Python package manager with built-in Python version management)
 # uv will download and manage Python 3.13 independently of the system Python
+# NOTE: webtop sets HOME=/config, so uv installs to /config/.local/bin
+ENV HOME="/config"
 RUN curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
+ENV PATH="/config/.local/bin:$PATH"
 
 # ---- Clone and install Hermes Agent with Python 3.13 ----
 # We use uv to create a venv with Python 3.13 (matching official hermes-agent Dockerfile),
