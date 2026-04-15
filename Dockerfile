@@ -1,16 +1,19 @@
 # ================================================================
 # hermes-agent-desktop: Linux GUI Desktop + Hermes Agent + Hermes WebUI
-# Based on: lscr.io/linuxserver/webtop:ubuntu-kde (official LinuxServer.io)
+# Based on: lscr.io/linuxserver/webtop:debian-kde (official LinuxServer.io)
 # ================================================================
 #
-# Build stages:
-#   1. Build Hermes WebUI (clone source only)
-#   2. Combine everything into the official KDE desktop image
+# Why Debian over Ubuntu:
+#   - webtop:ubuntu-kde is based on Ubuntu 26.04 (too new, many packages
+#     not yet compatible: Playwright, python-olm CMake, Node.js npm missing)
+#   - webtop:debian-kde is based on Debian 13 Trixie (stable, Python 3.13,
+#     well-supported by all hermes-agent dependencies)
+#   - The old openclaw_computer image was also Debian 12 bookworm
 #
 # Python strategy:
-#   webtop:ubuntu-kde ships Python 3.14 (Ubuntu 26.04), but hermes-agent
-#   requires Python 3.12-3.13. We use uv to manage a Python 3.13 venv
-#   at /opt/hermes-venv, matching the official hermes-agent Dockerfile.
+#   Debian 13 Trixie ships Python 3.13 — matches hermes-agent's official
+#   Dockerfile exactly. No version management needed.
+#   We create a venv at /opt/hermes-venv using system Python 3.13.
 #
 # Ports:
 #   3000 - noVNC web desktop (HTTP)
@@ -19,7 +22,7 @@
 #   8642 - Hermes Agent Gateway API
 
 # ---- Stage 1: Clone Hermes WebUI source ----
-FROM python:3.12-slim AS webui-builder
+FROM python:3.13-slim AS webui-builder
 
 WORKDIR /build
 
@@ -28,52 +31,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && \
     rm -rf .git
 
 # ---- Stage 2: Final image ----
-# Official LinuxServer.io Ubuntu KDE desktop (active maintenance, multi-arch)
+# Official LinuxServer.io Debian KDE desktop (stable, well-supported)
 # https://docs.linuxserver.io/images/docker-webtop/
-FROM lscr.io/linuxserver/webtop:ubuntu-kde
+FROM lscr.io/linuxserver/webtop:debian-kde
 
 LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent-desktop
 LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux GUI Desktop"
 LABEL org.opencontainers.image.licenses=MIT
 
 # Install system dependencies
-# NOTE: cmake is needed for python-olm (E2EE encryption for WhatsApp bridge)
-# NOTE: CMAKE_POLICY_VERSION_MINIMUM=3.5 needed because python-olm's bundled libolm
-#       uses cmake_minimum_required(VERSION 2.6) which is rejected by CMake 4.x+
-# NOTE: webtop ships a partial nodesource Node.js 22 WITHOUT npm — we reinstall
-#       via the official NodeSource setup script to get the full nodejs+npm bundle
+# Debian 13 Trixie has Python 3.13, cmake 3.31 — all compatible with hermes-agent
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc cmake \
-    python3-dev libffi-dev libolm-dev \
+    python3 python3-pip python3-venv python3-dev \
+    libffi-dev libolm-dev \
     ripgrep ffmpeg procps curl git \
+    nodejs npm \
     && rm -rf /var/lib/apt/lists/*
-ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 
-# Ensure Node.js 22 + npm are fully installed (webtop's nodejs lacks npm)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install uv (Python package manager with built-in Python version management)
-# uv will download and manage Python 3.13 independently of the system Python
-# NOTE: webtop sets HOME=/config, so uv installs to /config/.local/bin
-ENV HOME="/config"
-RUN curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh
-ENV PATH="/config/.local/bin:$PATH"
-
-# ---- Clone and install Hermes Agent with Python 3.13 ----
-# We use uv to create a venv with Python 3.13 (matching official hermes-agent Dockerfile),
-# avoiding compatibility issues with the system Python 3.14.
+# ---- Clone and install Hermes Agent ----
+# Debian 13's Python 3.13 matches the official hermes-agent Dockerfile.
+# We create a venv at /opt/hermes-venv and install hermes-agent[all] into it.
 # Both the CLI `hermes` command and Hermes WebUI share this same venv.
-RUN git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
+RUN python3 -m venv /opt/hermes-venv && \
+    git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
     cd /opt/hermes && \
-    uv venv /opt/hermes-venv --python 3.13 && \
-    . /opt/hermes-venv/bin/activate && \
-    uv pip install --no-cache -e ".[all]" && \
+    /opt/hermes-venv/bin/pip install --no-cache-dir -e ".[all]" && \
     npm install --prefer-offline --no-audit && \
-    sed -i 's/VERSION_ID="26.04"/VERSION_ID="24.04"/' /etc/os-release && \
-    sed -i 's/ubuntu26.04/ubuntu24.04/g' /etc/os-release && \
     npx playwright install --with-deps chromium --only-shell && \
     cd scripts/whatsapp-bridge && \
     npm install --prefer-offline --no-audit && \
@@ -181,7 +166,7 @@ if command -v kwriteconfig5 >/dev/null 2>&1; then\n\
 fi\n\
 \n\
 echo "[wallpaper] Apply complete"\n\
-:' > /opt/apply-wallpaper.sh && chmod +x /opt/apply-wallpaper.sh
+::' > /opt/apply-wallpaper.sh && chmod +x /opt/apply-wallpaper.sh
 
 # Register wallpaper apply as boot init
 RUN printf '#!/bin/bash\n/opt/apply-wallpaper.sh\n' \
@@ -237,7 +222,7 @@ if [ -d "$HERMES_INSTALL/skills" ] && [ -f "$HERMES_INSTALL/tools/skills_sync.py
 fi\n\
 \n\
 echo "[hermes] Bootstrap complete"\n\
-:' > /custom-cont-init.d/20-hermes-bootstrap.sh && \
+::' > /custom-cont-init.d/20-hermes-bootstrap.sh && \
     chmod +x /custom-cont-init.d/20-hermes-bootstrap.sh
 
 # Expose ports
