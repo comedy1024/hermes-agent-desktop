@@ -122,13 +122,18 @@ RUN mkdir -p /custom-cont-init.d && \
 # bypass Docker ENTRYPOINT and directly run: /bin/sh -c /init
 # This prevents s6-overlay from becoming PID 1, causing fatal error.
 #
-# Fix: Replace /init with our wrapper that detects non-PID-1 environments
-# and uses `unshare --pid` to create a new PID namespace.
+# Fix: Replace /init with our wrapper that:
+#   1. Detects if running as PID 1 (normal Docker) -> exec original s6-overlay
+#   2. If not PID 1, tries unshare --pid (requires CAP_SYS_ADMIN)
+#   3. If unshare fails (restricted env), falls back to cloud-init mode
+#      which completely bypasses s6-overlay and starts services manually
+#
 # The original s6-overlay init is preserved at /init.s6.
-# On normal Docker (PID 1), this wrapper adds zero overhead.
-RUN mv /init /init.s6
-COPY s6-init.sh /init
-RUN chmod +x /init
+COPY entrypoint-cloud.sh /entrypoint-cloud.sh
+RUN chmod +x /entrypoint-cloud.sh
+COPY s6-init.sh /s6-init-wrapper.sh
+RUN mv /init /init.s6 && chmod +x /init.s6
+RUN mv /s6-init-wrapper.sh /init && chmod +x /init
 
 # Copy our welcome page and wallpaper
 COPY welcome.html /opt/welcome.html
