@@ -133,13 +133,39 @@ EXPOSE 7860
 
 ## 部署到 ModelScope Spaces
 
-1. 在 ModelScope 创建一个新的创空间
+> **注意**：本镜像基于 linuxserver/webtop，使用 s6-overlay 管理进程（必须以 PID 1 运行）。
+> 从 v2026-04-16 起已内置 PID 1 兼容层（`s6-init.sh`），可自动适配云平台环境。
+
+1. 在 ModelScope 创建一个新的创空间（SDK 选择 Docker）
 2. 在创空间仓库中添加 `Dockerfile` 文件：
 ```dockerfile
 FROM ghcr.io/comedy1024/hermes-agent-desktop:latest
+
+# ModelScope 创空间要求应用监听 7860 端口
+# 我们将 noVNC 桌面映射到 7860（也可改为 8787 映射 WebUI）
+EXPOSE 7860
 ```
-3. 在创空间「设置」中添加所需环境变量
+3. 在创空间「设置」中添加所需环境变量（如 `OPENAI_API_KEY`）
 4. 点击重启即可自动拉取镜像并部署
+
+### 端口映射
+
+创空间默认只暴露 `7860` 端口。你可以根据需要选择映射哪个服务：
+
+| 映射端口 | 访问内容 | 说明 |
+|----------|----------|------|
+| `7860→3000` | KDE 桌面 | 浏览器访问完整 Linux 桌面 |
+| `7860→8787` | Hermes WebUI | 仅使用聊天/管理界面 |
+
+如需同时访问桌面和 WebUI，建议使用 Docker 自行部署（见上方快速开始）。
+
+### 常见问题
+
+**Q: 创空间启动报错 `s6-overlay-suexec: fatal: can only run as pid 1`**
+
+这是旧版本问题，从 v2026-04-16 起已修复。请拉取最新镜像。如果仍遇到此问题，
+说明创空间的容器运行时使用了特殊的 PID 命名空间隔离。请确保使用最新版镜像，
+其中包含 `s6-init.sh` PID 1 兼容层。
 
 ## 部署到 HuggingFace Spaces
 

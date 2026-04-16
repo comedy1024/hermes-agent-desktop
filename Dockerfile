@@ -117,6 +117,15 @@ RUN mkdir -p /custom-cont-init.d && \
     > /custom-cont-init.d/10-hermes-webui.sh && \
     chmod +x /custom-cont-init.d/10-hermes-webui.sh
 
+# ---- s6-overlay PID 1 compatibility wrapper ----
+# Cloud platforms (ModelScope Spaces, HuggingFace Spaces, Azure ACI, etc.)
+# may wrap /init in a subprocess, preventing s6-overlay from running as PID 1.
+# This wrapper uses `unshare --pid` to create a new PID namespace when needed,
+# so s6-overlay can always run as PID 1 regardless of the container runtime.
+# On normal Docker, it just exec's /init directly (no overhead).
+COPY s6-init.sh /usr/local/bin/s6-init.sh
+RUN chmod +x /usr/local/bin/s6-init.sh
+
 # Copy our welcome page and wallpaper
 COPY welcome.html /opt/welcome.html
 COPY wallpaper.png /opt/hermes-wallpaper.png
@@ -251,3 +260,8 @@ VOLUME ["/config"]
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8787/health || exit 1
+
+# Entrypoint: s6-init.sh ensures s6-overlay runs as PID 1
+# - Normal Docker: directly exec /init (zero overhead)
+# - Cloud platforms (ModelScope, HuggingFace): uses unshare --pid namespace
+ENTRYPOINT ["/usr/local/bin/s6-init.sh"]
