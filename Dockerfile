@@ -198,7 +198,7 @@ if command -v kwriteconfig5 >/dev/null 2>&1; then\n\
         --group "Wallpapers" --key "defaultWallpaper" "hermes-agent-desktop" 2>/dev/null || true\n\
 fi\n\
 \n\
-echo "[wallpaper] Apply complete"\n
+echo "[wallpaper] Apply complete"\n\
 ' > /opt/apply-wallpaper.sh && chmod +x /opt/apply-wallpaper.sh
 
 # Register wallpaper apply as boot init
@@ -254,7 +254,7 @@ if [ -d "$HERMES_INSTALL/skills" ] && [ -f "$HERMES_INSTALL/tools/skills_sync.py
     /opt/hermes-venv/bin/python "$HERMES_INSTALL/tools/skills_sync.py" 2>/dev/null || true\n\
 fi\n\
 \n\
-echo "[hermes] Bootstrap complete"\n
+echo "[hermes] Bootstrap complete"\n\
 ' > /custom-cont-init.d/20-hermes-bootstrap.sh && \
     chmod +x /custom-cont-init.d/20-hermes-bootstrap.sh
 
