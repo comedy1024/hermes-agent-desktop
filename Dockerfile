@@ -16,8 +16,9 @@
 #   We create a venv at /opt/hermes-venv using system Python 3.13.
 #
 # Ports:
-#   3000 - noVNC web desktop (HTTP)
-#   3001 - noVNC web desktop (HTTPS)
+#   3000 - Nginx/Selkies web desktop (HTTP, normal Docker via s6-overlay)
+#   3001 - Nginx/Selkies web desktop (HTTPS, normal Docker via s6-overlay)
+#   7860 - Nginx/Selkies web desktop (Cloud mode, ModelScope/HuggingFace)
 #   8787 - Hermes WebUI
 #   8642 - Hermes Agent Gateway API
 
@@ -197,8 +198,8 @@ if command -v kwriteconfig5 >/dev/null 2>&1; then\n\
         --group "Wallpapers" --key "defaultWallpaper" "hermes-agent-desktop" 2>/dev/null || true\n\
 fi\n\
 \n\
-echo "[wallpaper] Apply complete"\n\
-::' > /opt/apply-wallpaper.sh && chmod +x /opt/apply-wallpaper.sh
+echo "[wallpaper] Apply complete"\n
+' > /opt/apply-wallpaper.sh && chmod +x /opt/apply-wallpaper.sh
 
 # Register wallpaper apply as boot init
 RUN printf '#!/bin/bash\n/opt/apply-wallpaper.sh\n' \
@@ -253,22 +254,23 @@ if [ -d "$HERMES_INSTALL/skills" ] && [ -f "$HERMES_INSTALL/tools/skills_sync.py
     /opt/hermes-venv/bin/python "$HERMES_INSTALL/tools/skills_sync.py" 2>/dev/null || true\n\
 fi\n\
 \n\
-echo "[hermes] Bootstrap complete"\n\
-::' > /custom-cont-init.d/20-hermes-bootstrap.sh && \
+echo "[hermes] Bootstrap complete"\n
+' > /custom-cont-init.d/20-hermes-bootstrap.sh && \
     chmod +x /custom-cont-init.d/20-hermes-bootstrap.sh
 
 # Expose ports
-# 3000/3001 - webtop KDE desktop (HTTP/HTTPS)
+# 7860      - Nginx/Selkies desktop (default for ModelScope/HuggingFace, maps to app_port)
+# 3000/3001 - webtop KDE desktop (HTTP/HTTPS, used in normal Docker via s6-overlay)
 # 8787      - Hermes WebUI
 # 8642      - Hermes Agent Gateway API
-EXPOSE 3000 3001 8787 8642
+EXPOSE 7860 3000 3001 8787 8642
 
 # Data volume — webtop uses /config for all persistent data
 VOLUME ["/config"]
 
-# Health check
+# Health check — check Nginx/Selkies on 7860 (cloud) or WebUI on 8787
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8787/health || exit 1
+    CMD curl -sf http://localhost:7860/ > /dev/null || curl -sf http://localhost:3000/ > /dev/null || curl -sf http://localhost:8787/health || exit 1
 
 # Entrypoint: /init is now our PID 1 wrapper (same path as original s6-overlay init)
 # - Normal Docker: detects PID 1, exec's /init.s6 directly (zero overhead)
