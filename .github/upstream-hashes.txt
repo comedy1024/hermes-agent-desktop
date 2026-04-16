@@ -1,0 +1,3 @@
+hermes_agent=cedaefce9ed9a54c29c36df6783f454532358e1a
+hermes_webui=e4fec9e4e068876b30649d0897e8724bd83b40af
+base_image=unknown
