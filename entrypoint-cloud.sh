@@ -36,9 +36,10 @@ CLOUD_PORT=${CLOUD_PORT:-7860}
 
 # Ensure required directories exist with correct permissions
 mkdir -p /config/logs /config/hermes-data /config/.cache /config/.config
-mkdir -p /run /tmp/.X11-unix /tmp/.X1-lock
+mkdir -p /run /tmp/.X11-unix
 chmod 1777 /tmp/.X11-unix
-rm -f /tmp/.X1-lock
+# Remove X lock files (must be files, not directories)
+rm -rf /tmp/.X*-lock /tmp/.X11-unix/* 2>/dev/null || true
 
 # Fix permissions for abc user
 chown -R abc:abc /config/.cache 2>/dev/null || true
