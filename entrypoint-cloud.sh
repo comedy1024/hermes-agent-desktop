@@ -78,42 +78,45 @@ else
     echo "[entrypoint-cloud] WARNING: /defaults/default.conf not found, creating minimal config"
     
     # Create minimal Nginx config if template not found
-    printf '%s\n' \
-    "worker_processes 1;" \
-    "error_log /config/logs/nginx-error.log warn;" \
-    "pid /run/nginx.pid;" \
-    "" \
-    "events {" \
-    "    worker_connections 512;" \
-    "}" \
-    "" \
-    "http {" \
-    "    include /etc/nginx/mime.types;" \
-    "    default_type application/octet-stream;" \
-    "" \
-    "    sendfile on;" \
-    "    tcp_nopush on;" \
-    "    tcp_nodelay on;" \
-    "    keepalive_timeout 65;" \
-    "" \
-    "    server {" \
-    "        listen ${CLOUD_PORT};" \
-    "" \
-    "        location / {" \
-    "            proxy_pass http://127.0.0.1:8082;" \
-    "            proxy_http_version 1.1;" \
-    "            proxy_set_header Upgrade \$http_upgrade;" \
-    "            proxy_set_header Connection \"upgrade\";" \
-    "            proxy_set_header Host \$host;" \
-    "            proxy_set_header X-Real-IP \$remote_addr;" \
-    "            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" \
-    "            proxy_set_header X-Forwarded-Proto \$scheme;" \
-    "            proxy_read_timeout 86400s;" \
-    "            proxy_send_timeout 86400s;" \
-    "        }" \
-    "    }" \
-    "}" \
-    > /config/nginx/nginx.conf
+    # Use cat with quoted heredoc to preserve nginx variables
+    cat > /config/nginx/nginx.conf << 'NGINXCONF'
+worker_processes 1;
+error_log /config/logs/nginx-error.log warn;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 512;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+
+    server {
+        listen CLOUD_PORT_PLACEHOLDER;
+
+        location / {
+            proxy_pass http://127.0.0.1:8082;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 86400s;
+            proxy_send_timeout 86400s;
+        }
+    }
+}
+NGINXCONF
+    # Replace port placeholder
+    sed -i "s/CLOUD_PORT_PLACEHOLDER/${CLOUD_PORT}/g" /config/nginx/nginx.conf
 fi
 
 # ---- Run custom init scripts ----
