@@ -1,29 +1,26 @@
 #!/bin/bash
 # ================================================================
-# entrypoint-cloud.sh — Cloud platform entrypoint (no s6-overlay)
+# entrypoint-cloud.sh — Cloud platform entrypoint with Nginx
 # ================================================================
-# This entrypoint completely bypasses s6-overlay and starts services
-# manually, mimicking the linuxserver/webtop startup sequence:
+# This entrypoint configures webtop's built-in Nginx to listen on
+# the cloud platform's port (default 7860) instead of 3000/3001.
 #
-#   1. Xvfb (virtual X display)
-#   2. D-Bus (system message bus)
-#   3. PulseAudio (audio, optional)
-#   4. Desktop Environment (KDE via startwm.sh)
-#   5. Selkies WebRTC (remote desktop streaming on port 7860)
-#   6. Hermes WebUI (port 8787, localhost only)
+# Architecture:
+#   Browser → Nginx (7860) → Selkies WebSocket (8082)
 #
-# Port mapping:
-#   - 7860: Selkies WebRTC desktop (ModelScope/HuggingFace default)
-#   - 8787: Hermes WebUI (internal only, access via desktop browser)
+# We keep Nginx because:
+#   1. It's part of webtop base image and handles WebSocket upgrade
+#   2. ModelScope's reverse proxy sends HTTP first, then WebSocket
+#   3. Nginx bridges this gap by handling both protocols
 # ================================================================
 
 echo "=========================================="
 echo "Hermes Agent Desktop (Cloud Mode)"
 echo "=========================================="
 echo "[entrypoint-cloud] Starting at $(date)"
-echo "[entrypoint-cloud] Script version: e2697f9 (no --mode=websockets)"
+echo "[entrypoint-cloud] Script version: 288608e (with Nginx on 7860)"
 
-# ---- Environment setup (match webtop defaults) ----
+# ---- Environment setup ----
 export HOME=/config
 export USER=abc
 export PUID=${PUID:-1000}
@@ -34,50 +31,109 @@ export XDG_RUNTIME_DIR=/run/user/${PUID}
 # Cloud port — default 7860 for ModelScope/HuggingFace
 CLOUD_PORT=${CLOUD_PORT:-7860}
 
-# Ensure required directories exist with correct permissions
+# Ensure required directories exist
 mkdir -p /config/logs /config/hermes-data /config/.cache /config/.config
 mkdir -p /run /tmp/.X11-unix
 chmod 1777 /tmp/.X11-unix
-# Remove X lock files (must be files, not directories)
 rm -rf /tmp/.X*-lock /tmp/.X11-unix/* 2>/dev/null || true
 
-# Fix permissions for abc user
+# Fix permissions
 chown -R abc:abc /config/.cache 2>/dev/null || true
 chown -R abc:abc /config/.config 2>/dev/null || true
 mkdir -p /run/user/${PUID}
 chown abc:abc /run/user/${PUID} 2>/dev/null || true
 
-# Fix Fontconfig cache directory
+# Fix Fontconfig cache
 mkdir -p /config/.cache/fontconfig
 chown -R abc:abc /config/.cache/fontconfig 2>/dev/null || true
 
-# Set up user UID/GID if needed
+# Set up user UID/GID
 if [ -n "$PUID" ] && [ -n "$PGID" ]; then
     groupmod -o -g "$PGID" abc 2>/dev/null || true
     usermod -o -u "$PUID" abc 2>/dev/null || true
 fi
 
+# ---- Configure Nginx for cloud port ----
+# webtop's Nginx is configured via s6-overlay, we need to modify it
+# to listen on CLOUD_PORT instead of 3000/3001
+echo "[entrypoint-cloud] Configuring Nginx for port ${CLOUD_PORT}..."
+
+# Create nginx config directory
+mkdir -p /config/nginx
+
+# Check if webtop's default config template exists
+if [ -f /defaults/default.conf ]; then
+    echo "[entrypoint-cloud] Found webtop default.conf template"
+    
+    # Copy and modify the template
+    # Replace 3000/3001 with CLOUD_PORT, keep WebSocket proxy to 8082
+    sed -e "s/listen 3000 default_server/listen ${CLOUD_PORT} default_server/g" \
+        -e "s/listen 3001 default_server ssl/listen ${CLOUD_PORT} default_server ssl/g" \
+        -e "s/listen \[::\]:3000 default_server/listen [::]:${CLOUD_PORT} default_server/g" \
+        -e "s/listen \[::\]:3001 default_server ssl/listen [::]:${CLOUD_PORT} default_server ssl/g" \
+        /defaults/default.conf > /config/nginx/nginx.conf
+    
+    echo "[entrypoint-cloud] Nginx config created from webtop template (port ${CLOUD_PORT})"
+else
+    echo "[entrypoint-cloud] WARNING: /defaults/default.conf not found, creating minimal config"
+    
+    # Create minimal Nginx config if template not found
+    printf '%s\n' \
+    "worker_processes 1;" \
+    "error_log /config/logs/nginx-error.log warn;" \
+    "pid /run/nginx.pid;" \
+    "" \
+    "events {" \
+    "    worker_connections 512;" \
+    "}" \
+    "" \
+    "http {" \
+    "    include /etc/nginx/mime.types;" \
+    "    default_type application/octet-stream;" \
+    "" \
+    "    sendfile on;" \
+    "    tcp_nopush on;" \
+    "    tcp_nodelay on;" \
+    "    keepalive_timeout 65;" \
+    "" \
+    "    server {" \
+    "        listen ${CLOUD_PORT};" \
+    "" \
+    "        location / {" \
+    "            proxy_pass http://127.0.0.1:8082;" \
+    "            proxy_http_version 1.1;" \
+    "            proxy_set_header Upgrade \$http_upgrade;" \
+    "            proxy_set_header Connection \"upgrade\";" \
+    "            proxy_set_header Host \$host;" \
+    "            proxy_set_header X-Real-IP \$remote_addr;" \
+    "            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" \
+    "            proxy_set_header X-Forwarded-Proto \$scheme;" \
+    "            proxy_read_timeout 86400s;" \
+    "            proxy_send_timeout 86400s;" \
+    "        }" \
+    "    }" \
+    "}" \
+    > /config/nginx/nginx.conf
+fi
+
 # ---- Run custom init scripts ----
-# Skip 10-hermes-webui.sh in cloud mode (we start WebUI manually later)
 if [ -d /custom-cont-init.d ]; then
-    echo "[entrypoint] Running custom init scripts..."
+    echo "[entrypoint-cloud] Running custom init scripts..."
     for script in /custom-cont-init.d/*.sh; do
         if [ -f "$script" ]; then
-            # Skip hermes-webui.sh in cloud mode (started manually below)
             if [[ "$(basename "$script")" == *"hermes-webui"* ]]; then
-                echo "[entrypoint] Skipping: $(basename "$script") (cloud mode)"
+                echo "[entrypoint-cloud] Skipping: $(basename "$script") (started manually)"
                 continue
             fi
-            echo "[entrypoint] Running: $(basename "$script")"
+            echo "[entrypoint-cloud] Running: $(basename "$script")"
             chmod +x "$script"
             bash "$script" 2>&1 || true
         fi
     done
 fi
 
-# ---- 1. Start Xvfb (virtual X display server) ----
-# Mirrors webtop's svc-xorg/run
-echo "[entrypoint] Starting Xvfb..."
+# ---- Start Xvfb ----
+echo "[entrypoint-cloud] Starting Xvfb..."
 rm -f /tmp/.X1-lock
 
 VFBCOMMAND=""
@@ -112,34 +168,34 @@ s6-setuidgid abc /usr/bin/Xvfb \
     ${VFBCOMMAND} &
 XVFB_PID=$!
 
-# Wait for X to be ready
-echo "[entrypoint] Waiting for X server..."
+# Wait for X
+echo "[entrypoint-cloud] Waiting for X server..."
 RETRIES=0
 while ! xset q &>/dev/null; do
     sleep 0.5
     RETRIES=$((RETRIES + 1))
     if [ $RETRIES -gt 30 ]; then
-        echo "[entrypoint] ERROR: X server failed to start!"
+        echo "[entrypoint-cloud] ERROR: X server failed to start!"
         exit 1
     fi
 done
-echo "[entrypoint] X server is ready."
+echo "[entrypoint-cloud] X server is ready."
 
-# ---- 2. Start D-Bus ----
-echo "[entrypoint] Starting D-Bus..."
+# ---- Start D-Bus ----
+echo "[entrypoint-cloud] Starting D-Bus..."
 if [ -x /usr/bin/dbus-daemon ]; then
     mkdir -p /run/dbus
     dbus-daemon --system --fork 2>/dev/null || true
 fi
 
-# ---- 3. Start PulseAudio ----
-echo "[entrypoint] Starting PulseAudio..."
+# ---- Start PulseAudio ----
+echo "[entrypoint-cloud] Starting PulseAudio..."
 if command -v pulseaudio >/dev/null 2>&1; then
     s6-setuidgid abc pulseaudio --start --fail=false \
         --daemonize=true 2>/dev/null || true
 fi
 
-# ---- 4. Set X resources and resolution ----
+# ---- Set X resources ----
 if [ -f "${HOME}/.Xresources" ]; then
     if ! grep -q "breeze_cursors" "${HOME}/.Xresources"; then
         echo "Xcursor.theme: breeze_cursors" > "${HOME}/.Xresources"
@@ -169,14 +225,13 @@ if [ -n "$MODELINE" ]; then
     fi
 fi
 
-# ---- 5. Start Desktop Environment ----
-echo "[entrypoint] Starting desktop environment..."
+# ---- Start Desktop Environment ----
+echo "[entrypoint-cloud] Starting desktop environment..."
 if [ -f /defaults/startwm.sh ]; then
     cd /config
     s6-setuidgid abc /bin/bash /defaults/startwm.sh &
     DE_PID=$!
 else
-    # Fallback to openbox if webtop startwm not found
     if command -v openbox >/dev/null 2>&1; then
         HOME=/config s6-setuidgid abc openbox-session &
         DE_PID=$!
@@ -184,10 +239,10 @@ else
 fi
 sleep 2
 
-# ---- 6. Start Selkies WebRTC (directly on CLOUD_PORT) ----
-echo "[entrypoint] Starting Selkies WebRTC on port ${CLOUD_PORT}..."
+# ---- Start Selkies WebRTC (on default port 8082) ----
+echo "[entrypoint-cloud] Starting Selkies WebRTC on port 8082..."
 if command -v selkies >/dev/null 2>&1; then
-    # Set up audio sinks (mirrors svc-selkies/run)
+    # Set up audio sinks
     if [ ! -f '/dev/shm/audio.lock' ]; then
         s6-setuidgid abc with-contenv pactl \
             load-module module-null-sink \
@@ -201,21 +256,26 @@ if command -v selkies >/dev/null 2>&1; then
     fi
 
     export XCURSOR_THEME=breeze_cursors
-    # Selkies listens directly on CLOUD_PORT (default 7860)
-    # This is the entry point for cloud platform connections
-    # NOTE: Removed --mode="websockets" to allow HTTP + WebSocket
-    # ModelScope's reverse proxy needs HTTP for initial page load
-    s6-setuidgid abc selkies \
-        --addr="0.0.0.0" \
-        --port="${CLOUD_PORT}" &
+    # Selkies listens on 8082 (default), Nginx will proxy to it
+    s6-setuidgid abc selkies &
     SELKIES_PID=$!
-    echo "[entrypoint] Selkies started on port ${CLOUD_PORT} (PID=$SELKIES_PID)"
+    echo "[entrypoint-cloud] Selkies started on port 8082 (PID=$SELKIES_PID)"
 else
-    echo "[entrypoint] WARNING: selkies not found, skipping WebRTC"
+    echo "[entrypoint-cloud] WARNING: selkies not found, skipping WebRTC"
 fi
 
-# ---- 7. Start Hermes WebUI (localhost only) ----
-echo "[entrypoint] Starting Hermes WebUI on port 8787 (localhost only)..."
+# ---- Start Nginx with custom config ----
+echo "[entrypoint-cloud] Starting Nginx on port ${CLOUD_PORT}..."
+if command -v nginx >/dev/null 2>&1; then
+    nginx -c /config/nginx/nginx.conf &
+    NGINX_PID=$!
+    echo "[entrypoint-cloud] Nginx started on port ${CLOUD_PORT} (PID=$NGINX_PID)"
+else
+    echo "[entrypoint-cloud] WARNING: nginx not found"
+fi
+
+# ---- Start Hermes WebUI (localhost only) ----
+echo "[entrypoint-cloud] Starting Hermes WebUI on port 8787..."
 if [ -f /opt/hermes-webui-service.sh ]; then
     bash /opt/hermes-webui-service.sh &
     WEBUI_PID=$!
@@ -227,8 +287,9 @@ fi
 
 echo "=========================================="
 echo "All services started!"
-echo "- Desktop (Selkies): http://localhost:${CLOUD_PORT}"
-echo "- Hermes WebUI:      http://localhost:8787 (access via desktop browser)"
+echo "- Nginx (proxy):     http://localhost:${CLOUD_PORT}"
+echo "- Selkies (backend): ws://localhost:8082"
+echo "- Hermes WebUI:      http://localhost:8787"
 echo "=========================================="
 
 # ---- Keep container alive and monitor services ----
@@ -237,7 +298,7 @@ while true; do
 
     # Check Xvfb
     if ! kill -0 $XVFB_PID 2>/dev/null; then
-        echo "[entrypoint] WARNING: Xvfb died, restarting..."
+        echo "[entrypoint-cloud] WARNING: Xvfb died, restarting..."
         rm -f /tmp/.X1-lock
         s6-setuidgid abc /usr/bin/Xvfb "${DISPLAY}" \
             -screen 0 "${DEFAULT_RES}x24" -dpi 96 \
@@ -251,16 +312,21 @@ while true; do
 
     # Check Selkies
     if [ -n "$SELKIES_PID" ] && ! kill -0 $SELKIES_PID 2>/dev/null; then
-        echo "[entrypoint] WARNING: Selkies died, restarting..."
-        s6-setuidgid abc selkies \
-            --addr="0.0.0.0" \
-            --port="${CLOUD_PORT}" &
+        echo "[entrypoint-cloud] WARNING: Selkies died, restarting..."
+        s6-setuidgid abc selkies &
         SELKIES_PID=$!
+    fi
+
+    # Check Nginx
+    if [ -n "$NGINX_PID" ] && ! kill -0 $NGINX_PID 2>/dev/null; then
+        echo "[entrypoint-cloud] WARNING: Nginx died, restarting..."
+        nginx -c /config/nginx/nginx.conf &
+        NGINX_PID=$!
     fi
 
     # Check WebUI
     if [ -n "$WEBUI_PID" ] && ! kill -0 $WEBUI_PID 2>/dev/null; then
-        echo "[entrypoint] WARNING: Hermes WebUI died, restarting..."
+        echo "[entrypoint-cloud] WARNING: Hermes WebUI died, restarting..."
         if [ -f /opt/hermes-webui-service.sh ]; then
             bash /opt/hermes-webui-service.sh &
         else
