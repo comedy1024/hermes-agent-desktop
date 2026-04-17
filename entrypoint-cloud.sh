@@ -218,47 +218,50 @@ if [ -x /usr/sbin/nginx ]; then
     # while cloud browsers may access via 7860. Both must work.
     mkdir -p /tmp/nginx-cloud
 
-    # Write fresh nginx config (use printf to avoid heredoc variable expansion issues)
-    # Build config pieces conditionally to avoid empty lines
-    LISTEN_DIRECTIVES='        listen 3000;'
+    # Write fresh nginx config
+    # Use cat with quoted EOF to prevent variable expansion of nginx variables
+    cat > /tmp/nginx-cloud/nginx.conf << 'EOF'
+worker_processes 1;
+error_log /config/logs/nginx-error.log warn;
+pid /tmp/nginx-cloud/nginx.pid;
+
+events { worker_connections 512; }
+
+http {
+    access_log off;
+    sendfile on;
+    upstream selkies_ws  { server 127.0.0.1:8081; }
+    upstream hermes_webui { server 127.0.0.1:8787; }
+    server {
+        listen 3000;
+EOF
+
+    # Add extra listen port if different from 3000
     if [ "${CLOUD_PORT}" != "3000" ]; then
-        LISTEN_DIRECTIVES="${LISTEN_DIRECTIVES}
-        listen ${CLOUD_PORT};"
+        echo "        listen ${CLOUD_PORT};" >> /tmp/nginx-cloud/nginx.conf
     fi
 
-    printf '%s\n' \
-        'worker_processes 1;' \
-        "error_log /config/logs/nginx-error.log warn;" \
-        'pid /tmp/nginx-cloud/nginx.pid;' \
-        '' \
-        'events { worker_connections 512; }' \
-        '' \
-        'http {' \
-        '    access_log off;' \
-        '    sendfile on;' \
-        '    upstream selkies_ws  { server 127.0.0.1:8081; }' \
-        '    upstream hermes_webui { server 127.0.0.1:8787; }' \
-        '    server {' \
-        "${LISTEN_DIRECTIVES}" \
-        '        location /webui/ {' \
-        '            proxy_pass http://hermes_webui/;' \
-        '            proxy_http_version 1.1;' \
-        '            proxy_set_header Upgrade $http_upgrade;' \
-        '            proxy_set_header Connection "upgrade";' \
-        '            proxy_set_header Host $host;' \
-        '            proxy_read_timeout 3600s;' \
-        '        }' \
-        '        location / {' \
-        '            proxy_pass http://selkies_ws;' \
-        '            proxy_http_version 1.1;' \
-        '            proxy_set_header Upgrade $http_upgrade;' \
-        '            proxy_set_header Connection "upgrade";' \
-        '            proxy_set_header Host $host;' \
-        '            proxy_read_timeout 3600s;' \
-        '        }' \
-        '    }' \
-        '}' \
-        > /tmp/nginx-cloud/nginx.conf
+    # Append the rest of the config
+    cat >> /tmp/nginx-cloud/nginx.conf << 'EOF'
+        location /webui/ {
+            proxy_pass http://hermes_webui/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_read_timeout 3600s;
+        }
+        location / {
+            proxy_pass http://selkies_ws;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_read_timeout 3600s;
+        }
+    }
+}
+EOF
 
     # Kill zombie nginx processes before starting
     pkill -f 'nginx: master' 2>/dev/null || true
