@@ -217,13 +217,15 @@ if [ -x /usr/sbin/nginx ]; then
     # This is critical: ModelScope health check probes app_port (3000),
     # while cloud browsers may access via 7860. Both must work.
     mkdir -p /tmp/nginx-cloud
-    # Build extra listen directive (avoid duplicate if CLOUD_PORT==3000)
-    EXTRA_LISTEN=""
-    if [ "${CLOUD_PORT}" != "3000" ]; then
-        EXTRA_LISTEN="        listen ${CLOUD_PORT};"
-    fi
 
     # Write fresh nginx config (use printf to avoid heredoc variable expansion issues)
+    # Build config pieces conditionally to avoid empty lines
+    LISTEN_DIRECTIVES='        listen 3000;'
+    if [ "${CLOUD_PORT}" != "3000" ]; then
+        LISTEN_DIRECTIVES="${LISTEN_DIRECTIVES}
+        listen ${CLOUD_PORT};"
+    fi
+
     printf '%s\n' \
         'worker_processes 1;' \
         "error_log /config/logs/nginx-error.log warn;" \
@@ -237,8 +239,7 @@ if [ -x /usr/sbin/nginx ]; then
         '    upstream selkies_ws  { server 127.0.0.1:8081; }' \
         '    upstream hermes_webui { server 127.0.0.1:8787; }' \
         '    server {' \
-        '        listen 3000;' \
-        "${EXTRA_LISTEN}" \
+        "${LISTEN_DIRECTIVES}" \
         '        location /webui/ {' \
         '            proxy_pass http://hermes_webui/;' \
         '            proxy_http_version 1.1;' \
@@ -262,6 +263,13 @@ if [ -x /usr/sbin/nginx ]; then
     # Kill zombie nginx processes before starting
     pkill -f 'nginx: master' 2>/dev/null || true
     sleep 1
+
+    # Test nginx config before starting
+    if ! /usr/sbin/nginx -t -c /tmp/nginx-cloud/nginx.conf 2>&1; then
+        echo "[entrypoint] ERROR: Nginx config test failed!"
+        cat /tmp/nginx-cloud/nginx.conf
+        exit 1
+    fi
 
     /usr/sbin/nginx -c /tmp/nginx-cloud/nginx.conf &
     NGINX_PID=$!
@@ -310,6 +318,11 @@ while true; do
         echo "[entrypoint] WARNING: Nginx died, restarting..."
         pkill -f 'nginx: master' 2>/dev/null || true
         sleep 1
+        # Check error log for details
+        if [ -f /config/logs/nginx-error.log ]; then
+            echo "[entrypoint] Nginx error log:"
+            tail -5 /config/logs/nginx-error.log
+        fi
         /usr/sbin/nginx -c /tmp/nginx-cloud/nginx.conf &
         NGINX_PID=$!
     fi
