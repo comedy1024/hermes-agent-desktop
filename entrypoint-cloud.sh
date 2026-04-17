@@ -211,34 +211,61 @@ else
 fi
 
 # ---- 7. Start Nginx (reverse proxy to Selkies) ----
-echo "[entrypoint] Starting Nginx on port ${CLOUD_PORT}..."
+echo "[entrypoint] Starting Nginx on port ${CLOUD_PORT} and 3000..."
 if [ -x /usr/sbin/nginx ]; then
-    # Reconfigure nginx to listen on cloud port instead of 3000/3001
-    # Webtop's default nginx config proxies to Selkies on localhost
-    if [ -f /config/nginx/nginx.conf ]; then
-        # Patch existing config to use cloud port
-        sed -i "s/listen 3000;/listen ${CLOUD_PORT};/g" /config/nginx/nginx.conf 2>/dev/null || true
-        sed -i "s/listen 3001;/listen ${CLOUD_PORT} ssl;/g" /config/nginx/nginx.conf 2>/dev/null || true
+    # Write a fresh nginx config that listens on BOTH cloud port AND 3000
+    # This is critical: ModelScope health check probes app_port (3000),
+    # while cloud browsers may access via 7860. Both must work.
+    mkdir -p /tmp/nginx-cloud
+    # Build extra listen directive (avoid duplicate if CLOUD_PORT==3000)
+    EXTRA_LISTEN=""
+    if [ "${CLOUD_PORT}" != "3000" ]; then
+        EXTRA_LISTEN="        listen ${CLOUD_PORT};"
     fi
-    if [ -f /etc/nginx/nginx.conf ]; then
-        sed -i "s/listen 3000;/listen ${CLOUD_PORT};/g" /etc/nginx/nginx.conf 2>/dev/null || true
-        sed -i "s/listen 3001;/listen ${CLOUD_PORT} ssl;/g" /etc/nginx/nginx.conf 2>/dev/null || true
-    fi
-    # Check for default server config files
-    for conf in /etc/nginx/http.d/default.conf /etc/nginx/conf.d/default.conf; do
-        if [ -f "$conf" ]; then
-            sed -i "s/listen 3000;/listen ${CLOUD_PORT};/g" "$conf" 2>/dev/null || true
-            sed -i "s/listen 3001;/listen ${CLOUD_PORT} ssl;/g" "$conf" 2>/dev/null || true
-        fi
-    done
+
+    # Write fresh nginx config (use printf to avoid heredoc variable expansion issues)
+    printf '%s\n' \
+        'worker_processes 1;' \
+        "error_log /config/logs/nginx-error.log warn;" \
+        'pid /tmp/nginx-cloud/nginx.pid;' \
+        '' \
+        'events { worker_connections 512; }' \
+        '' \
+        'http {' \
+        '    access_log off;' \
+        '    sendfile on;' \
+        '    upstream selkies_ws  { server 127.0.0.1:8081; }' \
+        '    upstream hermes_webui { server 127.0.0.1:8787; }' \
+        '    server {' \
+        '        listen 3000;' \
+        "${EXTRA_LISTEN}" \
+        '        location /webui/ {' \
+        '            proxy_pass http://hermes_webui/;' \
+        '            proxy_http_version 1.1;' \
+        '            proxy_set_header Upgrade $http_upgrade;' \
+        '            proxy_set_header Connection "upgrade";' \
+        '            proxy_set_header Host $host;' \
+        '            proxy_read_timeout 3600s;' \
+        '        }' \
+        '        location / {' \
+        '            proxy_pass http://selkies_ws;' \
+        '            proxy_http_version 1.1;' \
+        '            proxy_set_header Upgrade $http_upgrade;' \
+        '            proxy_set_header Connection "upgrade";' \
+        '            proxy_set_header Host $host;' \
+        '            proxy_read_timeout 3600s;' \
+        '        }' \
+        '    }' \
+        '}' \
+        > /tmp/nginx-cloud/nginx.conf
 
     # Kill zombie nginx processes before starting
-    pkill -ef '\[n\]ginx:' 2>/dev/null || true
+    pkill -f 'nginx: master' 2>/dev/null || true
     sleep 1
 
-    /usr/sbin/nginx -g 'daemon off;' &
+    /usr/sbin/nginx -c /tmp/nginx-cloud/nginx.conf &
     NGINX_PID=$!
-    echo "[entrypoint] Nginx started on port ${CLOUD_PORT} (PID=$NGINX_PID)"
+    echo "[entrypoint] Nginx started on port 3000 and ${CLOUD_PORT} (PID=$NGINX_PID)"
 else
     echo "[entrypoint] WARNING: nginx not found"
 fi
@@ -281,9 +308,9 @@ while true; do
     # Check Nginx
     if [ -n "$NGINX_PID" ] && ! kill -0 $NGINX_PID 2>/dev/null; then
         echo "[entrypoint] WARNING: Nginx died, restarting..."
-        pkill -ef '\[n\]ginx:' 2>/dev/null || true
+        pkill -f 'nginx: master' 2>/dev/null || true
         sleep 1
-        /usr/sbin/nginx -g 'daemon off;' &
+        /usr/sbin/nginx -c /tmp/nginx-cloud/nginx.conf &
         NGINX_PID=$!
     fi
 
