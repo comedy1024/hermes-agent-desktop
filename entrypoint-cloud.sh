@@ -20,6 +20,8 @@
 echo "=========================================="
 echo "Hermes Agent Desktop (Cloud Mode)"
 echo "=========================================="
+echo "[entrypoint-cloud] Starting at $(date)"
+echo "[entrypoint-cloud] Script version: e2697f9 (no --mode=websockets)"
 
 # ---- Environment setup (match webtop defaults) ----
 export HOME=/config
