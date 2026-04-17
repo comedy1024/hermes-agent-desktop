@@ -201,10 +201,11 @@ if command -v selkies >/dev/null 2>&1; then
     export XCURSOR_THEME=breeze_cursors
     # Selkies listens directly on CLOUD_PORT (default 7860)
     # This is the entry point for cloud platform connections
+    # NOTE: Removed --mode="websockets" to allow HTTP + WebSocket
+    # ModelScope's reverse proxy needs HTTP for initial page load
     s6-setuidgid abc selkies \
         --addr="0.0.0.0" \
-        --port="${CLOUD_PORT}" \
-        --mode="websockets" &
+        --port="${CLOUD_PORT}" &
     SELKIES_PID=$!
     echo "[entrypoint] Selkies started on port ${CLOUD_PORT} (PID=$SELKIES_PID)"
 else
@@ -251,8 +252,7 @@ while true; do
         echo "[entrypoint] WARNING: Selkies died, restarting..."
         s6-setuidgid abc selkies \
             --addr="0.0.0.0" \
-            --port="${CLOUD_PORT}" \
-            --mode="websockets" &
+            --port="${CLOUD_PORT}" &
         SELKIES_PID=$!
     fi
 
