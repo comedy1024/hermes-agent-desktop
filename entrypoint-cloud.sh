@@ -9,13 +9,12 @@
 #   2. D-Bus (system message bus)
 #   3. PulseAudio (audio, optional)
 #   4. Desktop Environment (KDE via startwm.sh)
-#   5. Selkies WebRTC (remote desktop streaming)
-#   6. Nginx (reverse proxy, port 7860 for cloud compatibility)
-#   7. Hermes WebUI (port 8787)
+#   5. Selkies WebRTC (remote desktop streaming on port 7860)
+#   6. Hermes WebUI (port 8787, localhost only)
 #
 # Port mapping:
-#   - 7860: Nginx/Selkies desktop (ModelScope/HuggingFace default)
-#   - 8787: Hermes WebUI
+#   - 7860: Selkies WebRTC desktop (ModelScope/HuggingFace default)
+#   - 8787: Hermes WebUI (internal only, access via desktop browser)
 # ================================================================
 
 echo "=========================================="
@@ -31,7 +30,6 @@ export DISPLAY=${DISPLAY:-:1}
 export XDG_RUNTIME_DIR=/run/user/${PUID}
 
 # Cloud port — default 7860 for ModelScope/HuggingFace
-# Set NOVNC_PORT=3000 for local Docker deployments
 CLOUD_PORT=${CLOUD_PORT:-7860}
 
 # Ensure required directories exist with correct permissions
@@ -184,8 +182,8 @@ else
 fi
 sleep 2
 
-# ---- 6. Start Selkies WebRTC ----
-echo "[entrypoint] Starting Selkies WebRTC..."
+# ---- 6. Start Selkies WebRTC (directly on CLOUD_PORT) ----
+echo "[entrypoint] Starting Selkies WebRTC on port ${CLOUD_PORT}..."
 if command -v selkies >/dev/null 2>&1; then
     # Set up audio sinks (mirrors svc-selkies/run)
     if [ ! -f '/dev/shm/audio.lock' ]; then
@@ -201,101 +199,33 @@ if command -v selkies >/dev/null 2>&1; then
     fi
 
     export XCURSOR_THEME=breeze_cursors
+    # Selkies listens directly on CLOUD_PORT (default 7860)
+    # This is the entry point for cloud platform connections
     s6-setuidgid abc selkies \
-        --addr="localhost" \
+        --addr="0.0.0.0" \
+        --port="${CLOUD_PORT}" \
         --mode="websockets" &
     SELKIES_PID=$!
-    echo "[entrypoint] Selkies started (PID=$SELKIES_PID)"
+    echo "[entrypoint] Selkies started on port ${CLOUD_PORT} (PID=$SELKIES_PID)"
 else
     echo "[entrypoint] WARNING: selkies not found, skipping WebRTC"
 fi
 
-# ---- 7. Start Nginx (reverse proxy to Selkies) ----
-echo "[entrypoint] Starting Nginx on port ${CLOUD_PORT} and 3000..."
-if [ -x /usr/sbin/nginx ]; then
-    # Write a fresh nginx config that listens on BOTH cloud port AND 3000
-    # This is critical: ModelScope health check probes app_port (3000),
-    # while cloud browsers may access via 7860. Both must work.
-    mkdir -p /tmp/nginx-cloud
-
-    # Write fresh nginx config
-    # Use cat with quoted EOF to prevent variable expansion of nginx variables
-    cat > /tmp/nginx-cloud/nginx.conf << 'EOF'
-worker_processes 1;
-error_log /config/logs/nginx-error.log warn;
-pid /tmp/nginx-cloud/nginx.pid;
-
-events { worker_connections 512; }
-
-http {
-    access_log off;
-    sendfile on;
-    upstream selkies_ws  { server 127.0.0.1:8081; }
-    upstream hermes_webui { server 127.0.0.1:8787; }
-    server {
-        listen 3000;
-EOF
-
-    # Add extra listen port if different from 3000
-    if [ "${CLOUD_PORT}" != "3000" ]; then
-        echo "        listen ${CLOUD_PORT};" >> /tmp/nginx-cloud/nginx.conf
-    fi
-
-    # Append the rest of the config
-    cat >> /tmp/nginx-cloud/nginx.conf << 'EOF'
-        location /webui/ {
-            proxy_pass http://hermes_webui/;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_read_timeout 3600s;
-        }
-        location / {
-            proxy_pass http://selkies_ws;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_read_timeout 3600s;
-        }
-    }
-}
-EOF
-
-    # Kill zombie nginx processes before starting
-    pkill -f 'nginx: master' 2>/dev/null || true
-    sleep 1
-
-    # Test nginx config before starting
-    if ! /usr/sbin/nginx -t -c /tmp/nginx-cloud/nginx.conf 2>&1; then
-        echo "[entrypoint] ERROR: Nginx config test failed!"
-        cat /tmp/nginx-cloud/nginx.conf
-        exit 1
-    fi
-
-    /usr/sbin/nginx -c /tmp/nginx-cloud/nginx.conf &
-    NGINX_PID=$!
-    echo "[entrypoint] Nginx started on port 3000 and ${CLOUD_PORT} (PID=$NGINX_PID)"
-else
-    echo "[entrypoint] WARNING: nginx not found"
-fi
-
-# ---- 8. Start Hermes WebUI ----
-echo "[entrypoint] Starting Hermes WebUI on port 8787..."
+# ---- 7. Start Hermes WebUI (localhost only) ----
+echo "[entrypoint] Starting Hermes WebUI on port 8787 (localhost only)..."
 if [ -f /opt/hermes-webui-service.sh ]; then
     bash /opt/hermes-webui-service.sh &
     WEBUI_PID=$!
 else
     cd /opt/hermes-webui
-    /opt/hermes-venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8787 &
+    /opt/hermes-venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8787 &
     WEBUI_PID=$!
 fi
 
 echo "=========================================="
 echo "All services started!"
-echo "- Desktop:       http://localhost:${CLOUD_PORT}"
-echo "- Hermes WebUI:  http://localhost:8787"
+echo "- Desktop (Selkies): http://localhost:${CLOUD_PORT}"
+echo "- Hermes WebUI:      http://localhost:8787 (access via desktop browser)"
 echo "=========================================="
 
 # ---- Keep container alive and monitor services ----
@@ -316,18 +246,14 @@ while true; do
         XVFB_PID=$!
     fi
 
-    # Check Nginx
-    if [ -n "$NGINX_PID" ] && ! kill -0 $NGINX_PID 2>/dev/null; then
-        echo "[entrypoint] WARNING: Nginx died, restarting..."
-        pkill -f 'nginx: master' 2>/dev/null || true
-        sleep 1
-        # Check error log for details
-        if [ -f /config/logs/nginx-error.log ]; then
-            echo "[entrypoint] Nginx error log:"
-            tail -5 /config/logs/nginx-error.log
-        fi
-        /usr/sbin/nginx -c /tmp/nginx-cloud/nginx.conf &
-        NGINX_PID=$!
+    # Check Selkies
+    if [ -n "$SELKIES_PID" ] && ! kill -0 $SELKIES_PID 2>/dev/null; then
+        echo "[entrypoint] WARNING: Selkies died, restarting..."
+        s6-setuidgid abc selkies \
+            --addr="0.0.0.0" \
+            --port="${CLOUD_PORT}" \
+            --mode="websockets" &
+        SELKIES_PID=$!
     fi
 
     # Check WebUI
@@ -337,7 +263,7 @@ while true; do
             bash /opt/hermes-webui-service.sh &
         else
             cd /opt/hermes-webui
-            /opt/hermes-venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8787 &
+            /opt/hermes-venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8787 &
         fi
         WEBUI_PID=$!
     fi
