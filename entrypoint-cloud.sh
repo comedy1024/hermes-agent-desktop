@@ -58,10 +58,16 @@ if [ -n "$PUID" ] && [ -n "$PGID" ]; then
 fi
 
 # ---- Run custom init scripts ----
+# Skip 10-hermes-webui.sh in cloud mode (we start WebUI manually later)
 if [ -d /custom-cont-init.d ]; then
     echo "[entrypoint] Running custom init scripts..."
     for script in /custom-cont-init.d/*.sh; do
         if [ -f "$script" ]; then
+            # Skip hermes-webui.sh in cloud mode (started manually below)
+            if [[ "$(basename "$script")" == *"hermes-webui"* ]]; then
+                echo "[entrypoint] Skipping: $(basename "$script") (cloud mode)"
+                continue
+            fi
             echo "[entrypoint] Running: $(basename "$script")"
             chmod +x "$script"
             bash "$script" 2>&1 || true
