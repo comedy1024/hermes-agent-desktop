@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # ================================================================
 # entrypoint-cloud.sh — Cloud platform entrypoint (KasmVNC edition)
 # ================================================================
@@ -58,10 +58,12 @@ if [ -d /custom-cont-init.d ]; then
     echo "[entrypoint-cloud] Running custom init scripts..."
     for script in /custom-cont-init.d/*.sh; do
         if [ -f "$script" ]; then
-            if [[ "$(basename "$script")" == *"hermes-webui"* ]]; then
-                echo "[entrypoint-cloud] Skipping: $(basename "$script") (started manually)"
-                continue
-            fi
+            case "$(basename "$script")" in
+                *hermes-webui*)
+                    echo "[entrypoint-cloud] Skipping: $(basename "$script") (started manually)"
+                    continue
+                    ;;
+            esac
             echo "[entrypoint-cloud] Running: $(basename "$script")"
             chmod +x "$script"
             bash "$script" 2>&1 || true

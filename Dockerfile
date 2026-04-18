@@ -121,7 +121,9 @@ ENV NODE_ENV=production
 
 # ---- Copy desktop environment startup script ----
 # This replaces the default Openbox with KDE Plasma
-COPY root/ /root/
+# NOTE: COPY root/ / copies root/defaults/startwm.sh → /defaults/startwm.sh
+# (baseimage-kasmvnc expects startwm.sh at /defaults/startwm.sh)
+COPY root/ /
 
 # ---- Install Hermes WebUI as a supervised service ----
 # webtop uses s6-overlay for init; we add it to /custom-cont-init.d/ so it starts on each boot
@@ -149,8 +151,22 @@ RUN mkdir -p /custom-cont-init.d && \
 COPY entrypoint-cloud.sh /entrypoint-cloud.sh
 RUN chmod +x /entrypoint-cloud.sh
 COPY s6-init.sh /s6-init-wrapper.sh
-RUN mv /init /init.s6 && chmod +x /init.s6
-RUN mv /s6-init-wrapper.sh /init && chmod +x /init
+RUN echo "=== DEBUG: /init before ===" && \
+    ls -la /init && \
+    file /init && \
+    head -3 /init 2>/dev/null || true && \
+    echo "=== DEBUG: /s6-init-wrapper.sh ===" && \
+    ls -la /s6-init-wrapper.sh && \
+    head -1 /s6-init-wrapper.sh && \
+    echo "=== Performing mv ===" && \
+    mv /init /init.s6 && chmod +x /init.s6 && \
+    mv /s6-init-wrapper.sh /init && chmod +x /init && \
+    echo "=== DEBUG: /init after ===" && \
+    ls -la /init && \
+    head -1 /init && \
+    echo "=== DEBUG: /init.s6 after ===" && \
+    ls -la /init.s6 && \
+    file /init.s6
 
 # Copy our welcome page and wallpaper
 COPY welcome.html /opt/welcome.html
