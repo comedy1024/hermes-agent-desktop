@@ -28,8 +28,9 @@
 #   - Runs: node dist/server/index.js (port 8648 → proxies to 8642)
 #
 # Ports:
-#   3000 - KasmVNC desktop (HTTP, default, set CUSTOM_PORT=7860 for cloud)
-#   3001 - KasmVNC desktop (HTTPS)
+#   3000 - KasmVNC desktop (HTTP, default, set CUSTOM_PORT=7860 for cloud) [s6-overlay mode]
+#   3001 - KasmVNC desktop (HTTPS) [s6-overlay mode]
+#   7860 - noVNC desktop (HTTP, cloud mode — TigerVNC + websockify) [cloud mode]
 #   8648 - Hermes WebUI (BFF server)
 #   8642 - Hermes Agent Gateway API
 
@@ -60,8 +61,15 @@ LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent
 LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux GUI Desktop (KasmVNC)"
 LABEL org.opencontainers.image.licenses=MIT
 
-# Install system dependencies + KDE Plasma desktop
+# Install system dependencies + KDE Plasma desktop + VNC stack
 # Debian 12 Bookworm: Python 3.11, cmake 3.25 — all compatible with hermes-agent
+#
+# VNC stack (for cloud mode — ModelScope/HuggingFace):
+#   - tigervnc-standalone-server: TigerVNC (Xtigervnc) — lightweight X+VNC server
+#   - novnc: HTML5 VNC client — browser-based remote desktop
+#   - websockify: WebSocket→TCP proxy — bridges noVNC to TigerVNC
+#   Architecture: TigerVNC(:1/5901) → websockify+noVNC(7860) → browser
+#   This is the proven approach used by openclaw_computer on ModelScope.
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc cmake \
@@ -69,6 +77,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev libolm-dev \
     ripgrep ffmpeg procps curl git \
     kde-plasma-desktop konsole kwrite dolphin \
+    tigervnc-standalone-server novnc websockify \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22 + npm via NodeSource
