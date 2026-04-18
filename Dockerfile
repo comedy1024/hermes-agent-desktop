@@ -81,12 +81,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tigervnc-standalone-server novnc websockify \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome
-RUN curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    -o /tmp/chrome.deb && \
-    apt-get update && \
-    apt-get install -y /tmp/chrome.deb && \
-    rm -f /tmp/chrome.deb && \
+# Install Chromium (multi-arch, unlike Google Chrome which is amd64-only)
+# NOTE: google-chrome-stable only ships amd64 .deb and has massive dependency
+# issues on Debian 12. Chromium is in Debian repos, supports arm64 + amd64.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22 + npm via NodeSource
@@ -271,17 +270,17 @@ RUN mkdir -p /config/Desktop && \
         > /config/Desktop/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /config/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
         > /config/Desktop/hermes-terminal.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Google Chrome\nComment=Web Browser\nExec=google-chrome --no-sandbox\nIcon=google-chrome\nTerminal=false\nCategories=Network;WebBrowser;\n' \
-        > /config/Desktop/google-chrome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Chromium Browser\nComment=Web Browser\nExec=chromium --no-sandbox\nIcon=chromium\nTerminal=false\nCategories=Network;WebBrowser;\n' \
+        > /config/Desktop/chromium.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=输入法配置\nComment=Fcitx5 Input Method\nExec=fcitx5-configtool\nIcon=fcitx\nTerminal=false\nCategories=Settings;\n' \
         > /config/Desktop/fcitx5-config.desktop && \
-    chmod +x /config/Desktop/hermes-*.desktop /config/Desktop/google-chrome.desktop /config/Desktop/fcitx5-config.desktop
+    chmod +x /config/Desktop/hermes-*.desktop /config/Desktop/chromium.desktop /config/Desktop/fcitx5-config.desktop
 
 # Create KDE autostart entries
 RUN mkdir -p /config/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && google-chrome --no-sandbox http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && chromium --no-sandbox http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-webui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && google-chrome --no-sandbox /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && chromium --no-sandbox /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /config/hermes-data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-terminal.desktop && \
