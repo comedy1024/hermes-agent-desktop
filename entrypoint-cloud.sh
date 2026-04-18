@@ -18,7 +18,7 @@ echo "=========================================="
 echo "Hermes Agent Desktop (Cloud Mode)"
 echo "=========================================="
 echo "[entrypoint-cloud] Starting at $(date)"
-echo "[entrypoint-cloud] Script version: 288608e (with Nginx on 7860)"
+echo "[entrypoint-cloud] Script version: 288608g (standalone nginx.conf + server fragment)"
 
 # ---- Environment setup ----
 export HOME=/config
@@ -54,70 +54,111 @@ if [ -n "$PUID" ] && [ -n "$PGID" ]; then
 fi
 
 # ---- Configure Nginx for cloud port ----
-# webtop's Nginx is configured via s6-overlay, we need to modify it
-# to listen on CLOUD_PORT instead of 3000/3001
+# webtop's Nginx architecture:
+#   /etc/nginx/nginx.conf          — main config (has http { include site-confs/* })
+#   /defaults/default.conf         — server block template (included by main config)
+#   /config/nginx/site-confs/      — persistent server configs (copied from /defaults/)
+#
+# The server block in /defaults/default.conf contains:
+#   listen 3000 / listen 3001 ssl → proxies to Selkies on 8082
+#
+# Strategy: create a complete standalone nginx.conf that includes the
+# modified server block, so `nginx -c <file>` works as a standalone config.
 echo "[entrypoint-cloud] Configuring Nginx for port ${CLOUD_PORT}..."
 
-# Create nginx config directory
-mkdir -p /config/nginx
+# Clean up stale nginx configs from previous runs (persistent volume)
+rm -f /config/nginx/nginx.conf /config/nginx/cloud-server.conf
+mkdir -p /config/nginx /config/logs
 
-# Check if webtop's default config template exists
 if [ -f /defaults/default.conf ]; then
-    echo "[entrypoint-cloud] Found webtop default.conf template"
-    
-    # Copy and modify the template
-    # Replace 3000/3001 with CLOUD_PORT, keep WebSocket proxy to 8082
+    echo "[entrypoint-cloud] Found webtop default.conf, building standalone config..."
+
+    # Build a modified server block from the template
+    # Replace ports 3000/3001 → CLOUD_PORT
     sed -e "s/listen 3000 default_server/listen ${CLOUD_PORT} default_server/g" \
         -e "s/listen 3001 default_server ssl/listen ${CLOUD_PORT} default_server ssl/g" \
         -e "s/listen \[::\]:3000 default_server/listen [::]:${CLOUD_PORT} default_server/g" \
         -e "s/listen \[::\]:3001 default_server ssl/listen [::]:${CLOUD_PORT} default_server ssl/g" \
-        /defaults/default.conf > /config/nginx/nginx.conf
-    
-    echo "[entrypoint-cloud] Nginx config created from webtop template (port ${CLOUD_PORT})"
-else
-    echo "[entrypoint-cloud] WARNING: /defaults/default.conf not found, creating minimal config"
-    
-    # Create minimal Nginx config if template not found
-    # Use cat with quoted heredoc to preserve nginx variables
-    cat > /config/nginx/nginx.conf << 'NGINXCONF'
-worker_processes 1;
+        /defaults/default.conf > /config/nginx/cloud-server.conf
+
+    # Build a complete nginx.conf that includes the server block
+    cat > /config/nginx/nginx.conf << 'NGINXMAIN'
+worker_processes auto;
 error_log /config/logs/nginx-error.log warn;
 pid /run/nginx.pid;
 
 events {
-    worker_connections 512;
+    worker_connections 1024;
 }
 
 http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
 
+    # Cloud mode server block (port modified from webtop template)
+    include /config/nginx/cloud-server.conf;
+}
+NGINXMAIN
+
+    echo "[entrypoint-cloud] Standalone nginx.conf + cloud-server.conf created (port ${CLOUD_PORT})"
+else
+    echo "[entrypoint-cloud] WARNING: /defaults/default.conf not found, creating minimal standalone config"
+
+    # Build a complete standalone nginx.conf from scratch
+    cat > /config/nginx/nginx.conf << NGINXMINIMAL
+worker_processes auto;
+error_log /config/logs/nginx-error.log warn;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
     sendfile on;
     tcp_nopush on;
     tcp_nodelay on;
     keepalive_timeout 65;
 
     server {
-        listen CLOUD_PORT_PLACEHOLDER;
+        listen ${CLOUD_PORT};
 
         location / {
             proxy_pass http://127.0.0.1:8082;
             proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
             proxy_read_timeout 86400s;
             proxy_send_timeout 86400s;
         }
     }
 }
-NGINXCONF
-    # Replace port placeholder
-    sed -i "s/CLOUD_PORT_PLACEHOLDER/${CLOUD_PORT}/g" /config/nginx/nginx.conf
+NGINXMINIMAL
+
+    echo "[entrypoint-cloud] Minimal standalone nginx.conf created (port ${CLOUD_PORT})"
 fi
+
+# Validate nginx config before starting
+echo "[entrypoint-cloud] Validating Nginx config..."
+nginx -t -c /config/nginx/nginx.conf 2>&1 || {
+    echo "[entrypoint-cloud] ERROR: Nginx config validation failed!"
+    echo "[entrypoint-cloud] Dumping nginx.conf for debug:"
+    cat /config/nginx/nginx.conf
+    if [ -f /config/nginx/cloud-server.conf ]; then
+        echo "[entrypoint-cloud] Dumping cloud-server.conf for debug:"
+        cat /config/nginx/cloud-server.conf
+    fi
+}
 
 # ---- Run custom init scripts ----
 if [ -d /custom-cont-init.d ]; then
@@ -269,10 +310,17 @@ fi
 
 # ---- Start Nginx with custom config ----
 echo "[entrypoint-cloud] Starting Nginx on port ${CLOUD_PORT}..."
+NGINX_OK=false
 if command -v nginx >/dev/null 2>&1; then
-    nginx -c /config/nginx/nginx.conf &
-    NGINX_PID=$!
-    echo "[entrypoint-cloud] Nginx started on port ${CLOUD_PORT} (PID=$NGINX_PID)"
+    if nginx -t -c /config/nginx/nginx.conf 2>/dev/null; then
+        NGINX_OK=true
+        nginx -c /config/nginx/nginx.conf &
+        NGINX_PID=$!
+        echo "[entrypoint-cloud] Nginx started on port ${CLOUD_PORT} (PID=$NGINX_PID)"
+    else
+        echo "[entrypoint-cloud] ERROR: Nginx config invalid, NOT starting nginx"
+        echo "[entrypoint-cloud] Selkies will be accessible directly on port 8082"
+    fi
 else
     echo "[entrypoint-cloud] WARNING: nginx not found"
 fi
@@ -320,11 +368,16 @@ while true; do
         SELKIES_PID=$!
     fi
 
-    # Check Nginx
-    if [ -n "$NGINX_PID" ] && ! kill -0 $NGINX_PID 2>/dev/null; then
+    # Check Nginx (only if config was valid)
+    if [ "$NGINX_OK" = "true" ] && [ -n "$NGINX_PID" ] && ! kill -0 $NGINX_PID 2>/dev/null; then
         echo "[entrypoint-cloud] WARNING: Nginx died, restarting..."
-        nginx -c /config/nginx/nginx.conf &
-        NGINX_PID=$!
+        if nginx -t -c /config/nginx/nginx.conf 2>/dev/null; then
+            nginx -c /config/nginx/nginx.conf &
+            NGINX_PID=$!
+        else
+            echo "[entrypoint-cloud] ERROR: Nginx config invalid on restart, giving up"
+            NGINX_OK=false
+        fi
     fi
 
     # Check WebUI
