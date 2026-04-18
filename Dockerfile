@@ -39,8 +39,9 @@ FROM node:22-slim AS webui-builder
 WORKDIR /build
 
 # Install build dependencies (git for clone, python3+make+g++ for node-pty native build)
+# ca-certificates is required for git clone over HTTPS
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git python3 make g++ && \
+    git python3 make g++ ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/EKKOLearnAI/hermes-web-ui.git . && \
