@@ -61,7 +61,7 @@ LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent
 LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux GUI Desktop (KasmVNC)"
 LABEL org.opencontainers.image.licenses=MIT
 
-# Install system dependencies + KDE Plasma desktop + VNC stack
+# Install system dependencies + KDE Plasma desktop + VNC stack + input method + browser
 # Debian 12 Bookworm: Python 3.11, cmake 3.25 — all compatible with hermes-agent
 #
 # VNC stack (for cloud mode — ModelScope/HuggingFace):
@@ -77,8 +77,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev libolm-dev \
     ripgrep ffmpeg procps curl git \
     kde-plasma-desktop konsole kwrite dolphin \
+    fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 fcitx5-frontend-qt5 fcitx5-config-qt \
     tigervnc-standalone-server novnc websockify \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Google Chrome
+RUN curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    -o /tmp/chrome.deb && \
+    apt-get update && \
+    apt-get install -y /tmp/chrome.deb && \
+    rm -f /tmp/chrome.deb && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22 + npm via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
@@ -262,16 +271,22 @@ RUN mkdir -p /config/Desktop && \
         > /config/Desktop/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /config/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
         > /config/Desktop/hermes-terminal.desktop && \
-    chmod +x /config/Desktop/hermes-*.desktop
+    printf '[Desktop Entry]\nType=Application\nName=Google Chrome\nComment=Web Browser\nExec=google-chrome --no-sandbox\nIcon=google-chrome\nTerminal=false\nCategories=Network;WebBrowser;\n' \
+        > /config/Desktop/google-chrome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=输入法配置\nComment=Fcitx5 Input Method\nExec=fcitx5-configtool\nIcon=fcitx\nTerminal=false\nCategories=Settings;\n' \
+        > /config/Desktop/fcitx5-config.desktop && \
+    chmod +x /config/Desktop/hermes-*.desktop /config/Desktop/google-chrome.desktop /config/Desktop/fcitx5-config.desktop
 
 # Create KDE autostart entries
 RUN mkdir -p /config/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && xdg-open http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && google-chrome --no-sandbox http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-webui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && xdg-open /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && google-chrome --no-sandbox /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /config/hermes-data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
-        > /config/.config/autostart/hermes-terminal.desktop
+        > /config/.config/autostart/hermes-terminal.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Fcitx5 Input Method\nExec=fcitx5 -d --replace\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+        > /config/.config/autostart/fcitx5.desktop
 
 # ---- Bootstrap init script ----
 # Runs once at first boot to initialize Hermes Agent config files

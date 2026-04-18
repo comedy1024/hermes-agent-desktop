@@ -1,0 +1,10 @@
+# ModelScope 创空间 Dockerfile
+# 使用 hermes-agent-desktop 镜像
+
+FROM ghcr.io/comedy1024/hermes-agent-desktop:latest
+
+# 设置 KasmVNC 使用 7860 端口（ModelScope 要求）
+ENV CUSTOM_PORT=7860
+
+# 不需要 COPY、RUN 或 ENTRYPOINT
+# 基础镜像的 /init 会自动启动 KasmVNC + KDE + Hermes

@@ -32,14 +32,21 @@ export XDG_CACHE_HOME=/config/.cache
 # Cloud port — default 7860 for ModelScope/HuggingFace
 CLOUD_PORT=${CLOUD_PORT:-7860}
 
+# Input method (fcitx5)
+export GTK_IM_MODULE=fcitx
+export QT_IM_MODULE=fcitx
+export XMODIFIERS=@im=fcitx
+export SDL_IM_MODULE=fcitx
+
 # VNC port (internal, not exposed externally)
 VNC_PORT=5901
 
 # Display number derived from DISPLAY
 DISPLAY_NUM=$(echo "$DISPLAY" | sed 's/://')
 
-# Resolution
-RESOLUTION=${RESOLUTION:-1920x1080}
+# Resolution — 1280x720 is comfortable for cloud platforms
+# (1920x1080 is too large, requires scrolling)
+RESOLUTION=${RESOLUTION:-1280x720}
 
 echo "[entrypoint-cloud] Config: DISPLAY=${DISPLAY} VNC_PORT=${VNC_PORT} CLOUD_PORT=${CLOUD_PORT} RESOLUTION=${RESOLUTION}"
 
@@ -168,6 +175,12 @@ else
 fi
 sleep 2
 
+# Start fcitx5 input method
+if command -v fcitx5 >/dev/null 2>&1; then
+    echo "[entrypoint-cloud] Starting fcitx5 input method..."
+    DISPLAY="${DISPLAY}" fcitx5 -d --replace 2>/dev/null || true
+fi
+
 # ================================================================
 # Start noVNC + websockify — bridges VNC to WebSocket/HTTP
 # ================================================================
@@ -201,6 +214,23 @@ fi
 echo "[entrypoint-cloud] Using websockify: ${WEBSOCKIFY_BIN}"
 if [ -n "$NOVNC_WEB" ]; then
     echo "[entrypoint-cloud] noVNC web root: ${NOVNC_WEB}"
+    # Create index.html that auto-redirects to vnc.html
+    # (default noVNC page shows a file listing, not the VNC client)
+    if [ ! -f "${NOVNC_WEB}/index.html" ] || ! grep -q "vnc.html" "${NOVNC_WEB}/index.html" 2>/dev/null; then
+        cat > "${NOVNC_WEB}/index.html" << 'NOVNC_INDEX_EOF'
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="refresh" content="0;url=vnc.html">
+<title>Hermes Agent Desktop</title>
+</head>
+<body>
+<p>Redirecting to <a href="vnc.html">VNC desktop</a>...</p>
+</body>
+</html>
+NOVNC_INDEX_EOF
+        echo "[entrypoint-cloud] Created index.html redirect to vnc.html"
+    fi
     "${WEBSOCKIFY_BIN}" \
         --web "${NOVNC_WEB}" \
         0.0.0.0:${CLOUD_PORT} \
