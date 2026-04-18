@@ -39,7 +39,7 @@ jobs:
         id: fetch
         run: |
           HERMES_AGENT=$(git ls-remote https://github.com/NousResearch/hermes-agent.git HEAD | cut -f1)
-          HERMES_WEBUI=$(git ls-remote https://github.com/nesquena/hermes-webui.git HEAD | cut -f1)
+          HERMES_WEBUI=$(git ls-remote https://github.com/EKKOLearnAI/hermes-web-ui.git HEAD | cut -f1)
           # linuxserver/webtop is the official base image
           BASE_IMAGE=$(docker manifest inspect lscr.io/linuxserver/webtop:debian-kde 2>/dev/null \
                        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('config',{}).get('digest','unknown'))" \

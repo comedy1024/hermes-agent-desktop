@@ -15,21 +15,36 @@
 #   Dockerfile exactly. No version management needed.
 #   We create a venv at /opt/hermes-venv using system Python 3.13.
 #
+# WebUI: EKKOLearnAI/hermes-web-ui
+#   - Vue 3 + TypeScript + Vite + Naive UI (rich UI)
+#   - Koa 2 BFF (Node.js) → proxies to Hermes Gateway API
+#   - Features: Web terminal, platform channels, usage analytics, cron jobs
+#   - Deployed via: git clone + npm install + npm run build
+#   - Runs: node dist/server/index.js (port 8648 → proxies to 8642)
+#
 # Ports:
 #   3000 - Nginx/Selkies web desktop (HTTP, normal Docker via s6-overlay)
 #   3001 - Nginx/Selkies web desktop (HTTPS, normal Docker via s6-overlay)
 #   7860 - Nginx/Selkies web desktop (Cloud mode, ModelScope/HuggingFace)
-#   8787 - Hermes WebUI
+#   8648 - Hermes WebUI (BFF server)
 #   8642 - Hermes Agent Gateway API
 
-# ---- Stage 1: Clone Hermes WebUI source ----
-FROM python:3.13-slim AS webui-builder
+# ---- Stage 1: Build Hermes WebUI ----
+FROM node:22-slim AS webui-builder
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y --no-install-recommends git && \
-    git clone https://github.com/nesquena/hermes-webui.git . && \
-    rm -rf .git
+# Install build dependencies (git for clone, python3+make+g++ for node-pty native build)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/EKKOLearnAI/hermes-web-ui.git . && \
+    rm -rf .git && \
+    npm install && \
+    npm run build && \
+    npm prune --omit=dev && \
+    rm -rf /root/.cache /root/.npm
 
 # ---- Stage 2: Final image ----
 # Official LinuxServer.io Debian KDE desktop (stable, well-supported)
@@ -91,21 +106,15 @@ RUN mkdir -p /config/hermes-data
 # Copy Hermes WebUI from builder stage
 COPY --from=webui-builder /build /opt/hermes-webui
 
-# ---- Set up Hermes WebUI with shared hermes-venv ----
-# Hermes WebUI deeply integrates with hermes-agent by importing its Python
-# modules directly. We reuse the same venv so both share the same packages.
-RUN cd /opt/hermes-webui && \
-    /opt/hermes-venv/bin/pip install --no-cache-dir -r requirements.txt
-
-# Configure Hermes WebUI environment
-ENV HERMES_WEBUI_AGENT_DIR=/opt/hermes
-ENV HERMES_WEBUI_PYTHON=/opt/hermes-venv/bin/python
-ENV HERMES_WEBUI_HOST=0.0.0.0
-ENV HERMES_WEBUI_PORT=8787
-ENV HERMES_WEBUI_STATE_DIR=/config/hermes-data/.hermes/webui-mvp
-ENV HERMES_WEBUI_DEFAULT_WORKSPACE=/config/hermes-data
-# Touch container marker so WebUI knows it's in Docker
-RUN touch /.within_container
+# ---- Configure Hermes WebUI environment ----
+# EKKOLearnAI/hermes-web-ui is a Node.js BFF (Koa 2) that proxies to
+# Hermes Gateway on port 8642. It does NOT need shared Python venv.
+# Port: 8648 (BFF) → 8642 (Hermes Gateway)
+ENV PORT=8648
+ENV UPSTREAM=http://127.0.0.1:8642
+ENV HERMES_BIN=/opt/hermes-venv/bin/hermes
+ENV HERMES_HOME=/config/hermes-data
+ENV NODE_ENV=production
 
 # ---- Install Hermes WebUI as a supervised service ----
 # webtop uses s6-overlay for init; we add it to /custom-cont-init.d/ so it starts on each boot
@@ -208,7 +217,7 @@ RUN printf '#!/bin/bash\n/opt/apply-wallpaper.sh\n' \
 
 # Create Hermes desktop shortcuts
 RUN mkdir -p /config/Desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8787\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8648\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
         > /config/Desktop/hermes-webui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' \
         > /config/Desktop/hermes-welcome.desktop && \
@@ -218,7 +227,7 @@ RUN mkdir -p /config/Desktop && \
 
 # Create KDE autostart entries
 RUN mkdir -p /config/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && xdg-open http://localhost:8787"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && xdg-open http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-webui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && xdg-open /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-welcome.desktop && \
@@ -261,16 +270,16 @@ echo "[hermes] Bootstrap complete"\n\
 # Expose ports
 # 7860      - Nginx/Selkies desktop (default for ModelScope/HuggingFace, maps to app_port)
 # 3000/3001 - webtop KDE desktop (HTTP/HTTPS, used in normal Docker via s6-overlay)
-# 8787      - Hermes WebUI
+# 8648      - Hermes WebUI (BFF server)
 # 8642      - Hermes Agent Gateway API
-EXPOSE 7860 3000 3001 8787 8642
+EXPOSE 7860 3000 3001 8648 8642
 
 # Data volume — webtop uses /config for all persistent data
 VOLUME ["/config"]
 
-# Health check — check Nginx/Selkies on 7860 (cloud) or WebUI on 8787
+# Health check — check Nginx/Selkies on 7860 (cloud) or WebUI on 8648
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -sf http://localhost:7860/ > /dev/null || curl -sf http://localhost:3000/ > /dev/null || curl -sf http://localhost:8787/health || exit 1
+    CMD curl -sf http://localhost:7860/ > /dev/null || curl -sf http://localhost:3000/ > /dev/null || curl -sf http://localhost:8648/ > /dev/null || exit 1
 
 # Entrypoint: /init is now our PID 1 wrapper (same path as original s6-overlay init)
 # - Normal Docker: detects PID 1, exec's /init.s6 directly (zero overhead)

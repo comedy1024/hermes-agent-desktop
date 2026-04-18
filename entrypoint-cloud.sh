@@ -325,14 +325,29 @@ else
     echo "[entrypoint-cloud] WARNING: nginx not found"
 fi
 
+# ---- Start Hermes Gateway (port 8642) ----
+echo "[entrypoint-cloud] Starting Hermes Gateway on port 8642..."
+export HERMES_HOME=/config/hermes-data
+if [ -x /opt/hermes-venv/bin/hermes ]; then
+    s6-setuidgid abc /opt/hermes-venv/bin/hermes gateway run &
+    GATEWAY_PID=$!
+    echo "[entrypoint-cloud] Hermes Gateway started (PID=$GATEWAY_PID)"
+else
+    echo "[entrypoint-cloud] WARNING: hermes CLI not found, skipping gateway"
+fi
+
 # ---- Start Hermes WebUI (localhost only) ----
-echo "[entrypoint-cloud] Starting Hermes WebUI on port 8787..."
+echo "[entrypoint-cloud] Starting Hermes WebUI on port 8648..."
 if [ -f /opt/hermes-webui-service.sh ]; then
     bash /opt/hermes-webui-service.sh &
     WEBUI_PID=$!
 else
     cd /opt/hermes-webui
-    /opt/hermes-venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8787 &
+    PORT=8648 UPSTREAM=http://127.0.0.1:8642 \
+        HERMES_BIN=/opt/hermes-venv/bin/hermes \
+        HERMES_HOME=/config/hermes-data \
+        NODE_ENV=production \
+        node dist/server/index.js &
     WEBUI_PID=$!
 fi
 
@@ -340,7 +355,8 @@ echo "=========================================="
 echo "All services started!"
 echo "- Nginx (proxy):     http://localhost:${CLOUD_PORT}"
 echo "- Selkies (backend): ws://localhost:8082"
-echo "- Hermes WebUI:      http://localhost:8787"
+echo "- Hermes WebUI:      http://localhost:8648"
+echo "- Hermes Gateway:    http://localhost:8642"
 echo "=========================================="
 
 # ---- Keep container alive and monitor services ----
@@ -380,6 +396,13 @@ while true; do
         fi
     fi
 
+    # Check Hermes Gateway
+    if [ -n "$GATEWAY_PID" ] && ! kill -0 $GATEWAY_PID 2>/dev/null; then
+        echo "[entrypoint-cloud] WARNING: Hermes Gateway died, restarting..."
+        s6-setuidgid abc /opt/hermes-venv/bin/hermes gateway run &
+        GATEWAY_PID=$!
+    fi
+
     # Check WebUI
     if [ -n "$WEBUI_PID" ] && ! kill -0 $WEBUI_PID 2>/dev/null; then
         echo "[entrypoint-cloud] WARNING: Hermes WebUI died, restarting..."
@@ -387,7 +410,11 @@ while true; do
             bash /opt/hermes-webui-service.sh &
         else
             cd /opt/hermes-webui
-            /opt/hermes-venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8787 &
+            PORT=8648 UPSTREAM=http://127.0.0.1:8642 \
+                HERMES_BIN=/opt/hermes-venv/bin/hermes \
+                HERMES_HOME=/config/hermes-data \
+                NODE_ENV=production \
+                node dist/server/index.js &
         fi
         WEBUI_PID=$!
     fi
