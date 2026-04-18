@@ -149,7 +149,7 @@ RUN mkdir -p /custom-cont-init.d && \
 # NOTE: With KasmVNC, the cloud fallback is MUCH simpler — KasmVNC's built-in
 # Nginx handles HTTP→WebSocket upgrade natively. No custom Nginx config needed.
 COPY entrypoint-cloud.sh /entrypoint-cloud.sh
-RUN chmod +x /entrypoint-cloud.sh
+RUN sed -i 's/\r$//' /entrypoint-cloud.sh && chmod +x /entrypoint-cloud.sh
 
 # ---- s6-overlay PID 1 compatibility wrapper ----
 # We write the wrapper script into /init directly in a single RUN layer.
@@ -159,44 +159,20 @@ RUN chmod +x /entrypoint-cloud.sh
 # our POSIX sh wrapper to /init. The wrapper detects PID 1 and either
 # exec's the original s6-overlay or falls back to cloud-init mode.
 #
-# Install s6-init wrapper in a SINGLE RUN layer to avoid Docker cache issues.
-# We embed the script content directly to ensure it's atomic.
-RUN mv /init /init.s6 && chmod +x /init.s6 && \
-    cat > /init << 'S6_INIT_EOF'
-#!/bin/sh
-# ================================================================
-# /init — PID 1 compatibility wrapper for s6-overlay
-# ================================================================
-echo "[/init] ===== WRAPPER STARTED ====="
-echo "[/init] PID=$$  PPID=$PPID  SHELL=$0"
-echo "[/init] /init type: $(ls -la /init 2>&1)"
-echo "[/init] /init.s6 type: $(ls -la /init.s6 2>&1)"
-echo "[/init] /entrypoint-cloud.sh: $(ls -la /entrypoint-cloud.sh 2>&1)"
+# Copy s6-init wrapper and install it as /init.
+# CRITICAL: We must strip Windows CRLF (\r) from the script file,
+# because Git on Windows may check out files with \r\n line endings.
+# If /init has #!/bin/sh\r, the kernel looks for /bin/sh\r as the
+# interpreter, which doesn't exist → "/init: not found" (exit 127).
+RUN mv /init /init.s6 && chmod +x /init.s6
 
-# Check if we're running as PID 1
-if [ "$$" -eq 1 ]; then
-    echo "[/init] PID 1 detected, exec /init.s6"
-    exec /init.s6 "$@"
-fi
-
-# Not PID 1 — cloud platform wraps us in a subprocess
-echo "[/init] Not PID 1 (PID=$$), attempting PID namespace..."
-
-# Try unshare first (requires CAP_SYS_ADMIN)
-if unshare --pid --mount-proc --fork echo test > /dev/null 2>&1; then
-    echo "[/init] unshare available, creating PID namespace..."
-    exec unshare --pid --mount-proc --fork /init.s6 "$@"
-fi
-
-# unshare failed — we're in a restricted environment (no CAP_SYS_ADMIN)
-echo "[/init] unshare not permitted (no CAP_SYS_ADMIN)"
-echo "[/init] Falling back to cloud-init mode (bypassing s6-overlay)..."
-exec /entrypoint-cloud.sh "$@"
-S6_INIT_EOF
+COPY s6-init.sh /init
+RUN sed -i 's/\r$//' /init && \
     chmod +x /init && \
     echo "=== /init installed ===" && \
     ls -la /init /init.s6 && \
-    head -5 /init && \
+    head -3 /init && \
+    echo "=== /init.s6 type ===" && \
     file /init.s6
 
 # Copy our welcome page and wallpaper

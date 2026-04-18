@@ -1,0 +1,4 @@
+# Ensure all shell scripts use LF line endings in the working tree.
+# CRLF in shebang lines causes "/init: not found" on Linux because
+# the kernel tries to find /bin/sh\r as the interpreter.
+*.sh text eol=lf
