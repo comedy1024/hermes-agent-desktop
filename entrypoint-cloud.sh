@@ -18,7 +18,7 @@ echo "=========================================="
 echo "Hermes Agent Desktop (Cloud Mode — KasmVNC)"
 echo "=========================================="
 echo "[entrypoint-cloud] Starting at $(date)"
-echo "[entrypoint-cloud] Script version: kasmvnc-1"
+echo "[entrypoint-cloud] Script version: kasmvnc-2"
 
 # ---- Environment setup ----
 export HOME=/config
@@ -30,6 +30,27 @@ export XDG_RUNTIME_DIR=/run/user/${PUID}
 
 # Cloud port — default 7860 for ModelScope/HuggingFace
 CLOUD_PORT=${CLOUD_PORT:-7860}
+
+# ---- Helper: run command as user 'abc' ----
+# In cloud mode, s6-overlay is NOT running, so s6-setuidgid may not be in PATH.
+# We define a helper that tries multiple methods:
+#   1. /command/s6-setuidgid (s6-overlay installed but not in PATH)
+#   2. s6-setuidgid (in PATH — s6-overlay set it up)
+#   3. runuser -u abc (PAM-based, available on Debian)
+#   4. su - abc -c (fallback)
+run_as_abc() {
+    if command -v /command/s6-setuidgid >/dev/null 2>&1; then
+        /command/s6-setuidgid abc "$@"
+    elif command -v s6-setuidgid >/dev/null 2>&1; then
+        s6-setuidgid abc "$@"
+    elif command -v runuser >/dev/null 2>&1; then
+        runuser -u abc -- "$@"
+    else
+        su - abc -c "$*"
+    fi
+}
+
+echo "[entrypoint-cloud] User switching method: $(which /command/s6-setuidgid 2>/dev/null || which s6-setuidgid 2>/dev/null || which runuser 2>/dev/null || echo 'su')"
 
 # Ensure required directories exist
 mkdir -p /config/logs /config/hermes-data /config/.cache /config/.config
@@ -72,7 +93,7 @@ if [ -d /custom-cont-init.d ]; then
 fi
 
 # ---- Start Xvfb ----
-echo "[entrypoint-cloud] Starting Xvfb..."
+echo "[entrypoint-cloud] Starting Xvfb on display ${DISPLAY}..."
 rm -f /tmp/.X1-lock
 
 VFBCOMMAND=""
@@ -92,7 +113,9 @@ if [ -n "${SELKIES_MANUAL_WIDTH}" ] || [ -n "${SELKIES_MANUAL_HEIGHT}" ]; then
     DEFAULT_RES="${T_WIDTH}x${T_HEIGHT}x24"
 fi
 
-s6-setuidgid abc /usr/bin/Xvfb \
+# Start Xvfb — capture output for debugging
+XVFB_LOG=/config/logs/xvfb.log
+run_as_abc /usr/bin/Xvfb \
     "${DISPLAY}" \
     -screen 0 "${DEFAULT_RES}" \
     -dpi 96 \
@@ -101,8 +124,32 @@ s6-setuidgid abc /usr/bin/Xvfb \
     +extension XFIXES +extension XTEST \
     +iglx +render \
     -nolisten tcp -ac -noreset -shmem \
-    ${VFBCOMMAND} &
+    ${VFBCOMMAND} > "$XVFB_LOG" 2>&1 &
 XVFB_PID=$!
+echo "[entrypoint-cloud] Xvfb started (PID=$XVFB_PID)"
+
+# Give Xvfb a moment to start (or fail)
+sleep 1
+
+# Check if Xvfb process is still alive
+if ! kill -0 $XVFB_PID 2>/dev/null; then
+    echo "[entrypoint-cloud] ERROR: Xvfb process died immediately!"
+    echo "[entrypoint-cloud] Xvfb log:"
+    cat "$XVFB_LOG" 2>/dev/null
+    echo "[entrypoint-cloud] Trying Xvfb as root instead..."
+    /usr/bin/Xvfb \
+        "${DISPLAY}" \
+        -screen 0 "${DEFAULT_RES}" \
+        -dpi 96 \
+        +extension COMPOSITE +extension DAMAGE +extension GLX \
+        +extension RANDR +extension RENDER +extension MIT-SHM \
+        +extension XFIXES +extension XTEST \
+        +iglx +render \
+        -nolisten tcp -ac -noreset -shmem \
+        ${VFBCOMMAND} > "$XVFB_LOG" 2>&1 &
+    XVFB_PID=$!
+    sleep 1
+fi
 
 # Wait for X
 echo "[entrypoint-cloud] Waiting for X server..."
@@ -112,7 +159,18 @@ while ! xset q &>/dev/null; do
     RETRIES=$((RETRIES + 1))
     if [ $RETRIES -gt 30 ]; then
         echo "[entrypoint-cloud] ERROR: X server failed to start!"
+        echo "[entrypoint-cloud] Xvfb process alive: $(kill -0 $XVFB_PID 2>/dev/null && echo 'yes' || echo 'no')"
+        echo "[entrypoint-cloud] Xvfb log (last 20 lines):"
+        tail -20 "$XVFB_LOG" 2>/dev/null || echo "(no log)"
+        echo "[entrypoint-cloud] X lock files:"
+        ls -la /tmp/.X*-lock /tmp/.X11-unix/ 2>/dev/null || echo "(none)"
+        echo "[entrypoint-cloud] User info:"
+        id abc 2>/dev/null || echo "user abc not found"
         exit 1
+    fi
+    # Log progress every 5 retries
+    if [ $((RETRIES % 5)) -eq 0 ]; then
+        echo "[entrypoint-cloud] Still waiting for X... (attempt $RETRIES/30, Xvfb alive: $(kill -0 $XVFB_PID 2>/dev/null && echo 'yes' || echo 'no'))"
     fi
 done
 echo "[entrypoint-cloud] X server is ready."
@@ -127,7 +185,7 @@ fi
 # ---- Start PulseAudio ----
 echo "[entrypoint-cloud] Starting PulseAudio..."
 if command -v pulseaudio >/dev/null 2>&1; then
-    s6-setuidgid abc pulseaudio --start --fail=false \
+    run_as_abc pulseaudio --start --fail=false \
         --daemonize=true 2>/dev/null || true
 fi
 
@@ -135,15 +193,15 @@ fi
 echo "[entrypoint-cloud] Starting KDE Plasma..."
 if [ -f /defaults/startwm.sh ]; then
     cd /config
-    s6-setuidgid abc /bin/bash /defaults/startwm.sh &
+    run_as_abc /bin/bash /defaults/startwm.sh &
     DE_PID=$!
 elif [ -f /root/defaults/startwm.sh ]; then
     cd /config
-    s6-setuidgid abc /bin/bash /root/defaults/startwm.sh &
+    run_as_abc /bin/bash /root/defaults/startwm.sh &
     DE_PID=$!
 else
     echo "[entrypoint-cloud] WARNING: startwm.sh not found, trying startplasma-x11 directly"
-    s6-setuidgid abc startplasma-x11 &
+    run_as_abc startplasma-x11 &
     DE_PID=$!
 fi
 sleep 2
@@ -155,7 +213,7 @@ echo "[entrypoint-cloud] Starting KasmVNC on port ${CLOUD_PORT}..."
 
 # Generate KasmVNC config
 mkdir -p /config/.vnc
-cat > /config/.vnc/kasmvnc.yaml << 'KASMVNCCONF'
+cat > /config/.vnc/kasmvnc.yaml << KASMVNCCONF
 network:
   protocol: http
   websocket:
@@ -174,37 +232,68 @@ security:
     blacklist_timeout: 10
 KASMVNCCONF
 
+# Set KasmVNC password (required for vncserver)
+mkdir -p /config/.vnc
+if [ ! -f /config/.vnc/passwd ]; then
+    echo "[entrypoint-cloud] Setting VNC password..."
+    # Set a default password (abc123) — user can change it via VNC settings
+    echo "abc123" | vncpasswd -f > /config/.vnc/passwd 2>/dev/null || true
+    chmod 600 /config/.vnc/passwd 2>/dev/null || true
+    chown abc:abc /config/.vnc/passwd 2>/dev/null || true
+fi
+
 # Set KasmVNC port via environment
 export KASM_PORT=${CLOUD_PORT}
 export VNC_PORT=${CLOUD_PORT}
 
-if command -v vncserver >/dev/null 2>&1; then
+# Find KasmVNC binaries
+VNC_BIN=""
+for bin in /usr/bin/vncserver /usr/local/bin/vncserver /opt/kasmvnc/bin/vncserver; do
+    if [ -x "$bin" ]; then
+        VNC_BIN="$bin"
+        break
+    fi
+done
+
+if [ -n "$VNC_BIN" ]; then
+    echo "[entrypoint-cloud] Using KasmVNC at: $VNC_BIN"
     # KasmVNC's vncserver handles HTTP + WebSocket on the same port
-    s6-setuidgid abc vncserver :1 -geometry 1280x720 -depth 24 \
+    run_as_abc "$VNC_BIN" :1 -geometry 1280x720 -depth 24 \
         -websocketPort ${CLOUD_PORT} \
         -httpPort ${CLOUD_PORT} \
         -interface 0.0.0.0 \
         2>&1 || {
-        echo "[entrypoint-cloud] WARNING: vncserver failed, trying alternative..."
-        # Alternative: try kasmvncserver
-        if command -v kasmvncserver >/dev/null 2>&1; then
-            s6-setuidgid abc kasmvncserver :1 -geometry 1280x720 -depth 24 \
-                -websocketPort ${CLOUD_PORT} \
-                -interface 0.0.0.0 2>&1 || true
-        fi
+        echo "[entrypoint-cloud] WARNING: vncserver failed, trying without port flags..."
+        # Some KasmVNC versions use different flag names
+        run_as_abc "$VNC_BIN" :1 -geometry 1280x720 -depth 24 \
+            -interface 0.0.0.0 2>&1 || {
+            echo "[entrypoint-cloud] WARNING: All vncserver attempts failed"
+            echo "[entrypoint-cloud] Trying to start kasmvnc directly..."
+            if [ -x /opt/kasmvnc/bin/kasmvnc ]; then
+                /opt/kasmvnc/bin/kasmvnc :1 -geometry 1280x720 -depth 24 2>&1 || true
+            fi
+        }
     }
     echo "[entrypoint-cloud] KasmVNC started on port ${CLOUD_PORT}"
 else
     echo "[entrypoint-cloud] WARNING: vncserver not found!"
     echo "[entrypoint-cloud] Checking for KasmVNC binary..."
-    ls -la /usr/bin/vnc* /usr/bin/kasm* /opt/kasmvnc/bin/ 2>/dev/null || true
+    ls -la /usr/bin/vnc* /usr/local/bin/vnc* /opt/kasmvnc/bin/ 2>/dev/null || true
+    echo "[entrypoint-cloud] Attempting manual KasmVNC start..."
+    # Try the kasmvnc binary directly
+    for bin in /opt/kasmvnc/bin/kasmvnc /usr/bin/kasmvnc; do
+        if [ -x "$bin" ]; then
+            run_as_abc "$bin" :1 -geometry 1280x720 -depth 24 2>&1 || true
+            break
+        fi
+    done
 fi
 
 # ---- Start Hermes Gateway (port 8642) ----
 echo "[entrypoint-cloud] Starting Hermes Gateway on port 8642..."
 export HERMES_HOME=/config/hermes-data
 if [ -x /opt/hermes-venv/bin/hermes ]; then
-    s6-setuidgid abc /opt/hermes-venv/bin/hermes gateway run &
+    run_as_abc /opt/hermes-venv/bin/hermes gateway run &
     GATEWAY_PID=$!
     echo "[entrypoint-cloud] Hermes Gateway started (PID=$GATEWAY_PID)"
 else
@@ -241,7 +330,7 @@ while true; do
     if ! kill -0 $XVFB_PID 2>/dev/null; then
         echo "[entrypoint-cloud] WARNING: Xvfb died, restarting..."
         rm -f /tmp/.X1-lock
-        s6-setuidgid abc /usr/bin/Xvfb "${DISPLAY}" \
+        run_as_abc /usr/bin/Xvfb "${DISPLAY}" \
             -screen 0 "${DEFAULT_RES}" -dpi 96 \
             +extension COMPOSITE +extension DAMAGE +extension GLX \
             +extension RANDR +extension RENDER +extension MIT-SHM \
@@ -254,7 +343,7 @@ while true; do
     # Check Hermes Gateway
     if [ -n "$GATEWAY_PID" ] && ! kill -0 $GATEWAY_PID 2>/dev/null; then
         echo "[entrypoint-cloud] WARNING: Hermes Gateway died, restarting..."
-        s6-setuidgid abc /opt/hermes-venv/bin/hermes gateway run &
+        run_as_abc /opt/hermes-venv/bin/hermes gateway run &
         GATEWAY_PID=$!
     fi
 
