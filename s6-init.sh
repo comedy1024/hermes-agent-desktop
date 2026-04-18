@@ -2,7 +2,7 @@
 # ================================================================
 # /init — PID 1 compatibility wrapper for s6-overlay
 # ================================================================
-# Problem: s6-overlay (used by linuxserver/webtop) MUST run as PID 1.
+# Problem: s6-overlay (used by linuxserver/baseimage-kasmvnc) MUST run as PID 1.
 # Cloud platforms like ModelScope Spaces run: /bin/sh -c /init
 # This wraps /init in a subprocess, preventing s6-overlay from becoming PID 1,
 # causing: "s6-overlay-suexec: fatal: can only run as pid 1"

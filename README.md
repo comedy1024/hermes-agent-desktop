@@ -1,6 +1,6 @@
 # hermes-agent-desktop
 
-基于 [LinuxServer.io Webtop (Debian KDE)](https://github.com/linuxserver/docker-webtop) + [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) + [Hermes WebUI](https://github.com/nesquena/hermes-webui) 打包的一体化 Docker 镜像。
+基于 [LinuxServer.io Baseimage KasmVNC (Debian Bookworm)](https://github.com/linuxserver/docker-baseimage-kasmvnc) + [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) + [Hermes WebUI](https://github.com/EKKOLearnAI/hermes-web-ui) 打包的一体化 Docker 镜像。
 
 ## 镜像地址
 
@@ -10,21 +10,32 @@ ghcr.io/comedy1024/hermes-agent-desktop:latest
 
 ## 功能特性
 
-- 🖥️ **Linux GUI 桌面** — 通过 noVNC 在浏览器中访问完整 Debian KDE 桌面环境
+- 🖥️ **Linux GUI 桌面** — 通过 KasmVNC 在浏览器中访问完整 Debian KDE 桌面环境
 - 🤖 **Hermes Agent** — 自演化 AI Agent 框架，支持 OpenAI / Anthropic / DeepSeek / Ollama 等
-- 🌐 **Hermes WebUI** — 社区最活跃的 Hermes Agent Web 管理界面（1.6k+ Stars）
-- 🔧 **全功能管理** — 流式聊天、文件浏览器、技能管理、记忆编辑、语音输入、7 种主题
-- 🔗 **CLI 会话桥接** — 终端和 WebUI 共享会话，无缝切换
-- 🔒 **官方镜像基础** — 基于 LinuxServer.io 官方维护镜像，安全可靠，多架构支持
+- 🌐 **Hermes WebUI** — 社区最活跃的 Hermes Agent Web 管理界面（769+ Stars）
+- 🔧 **全功能管理** — Web 终端、平台频道配置（8平台）、使用分析、定时任务、模型管理
+- 🔗 **Gateway API** — OpenAI 兼容 API，供 WebUI 和外部调用
+- 🔒 **官方镜像基础** — 基于 LinuxServer.io 官方维护的 KasmVNC 基础镜像，多架构支持
+- ☁️ **云平台友好** — KasmVNC 使用 WebSocket VNC，完美兼容 ModelScope/HuggingFace 等单端口 HTTP 反代平台
+
+## 远程桌面方案：KasmVNC
+
+> **为什么用 KasmVNC 而不是 Selkies？**
+>
+> 云平台（ModelScope 创空间、HuggingFace Spaces）只暴露单个 HTTP 端口。
+> - **KasmVNC** (WebSocket VNC)：HTTP 页面 + 同端口 WebSocket 升级 → ✅ 完美兼容
+> - **Selkies** (WebRTC)：需要独立 UDP/TCP 媒体流 → ❌ 无法穿透 HTTP 反向代理
 
 ## 端口说明
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| `3000` | noVNC | Debian KDE 桌面（浏览器访问，HTTP） |
-| `3001` | noVNC | Debian KDE 桌面（浏览器访问，HTTPS） |
-| `8787` | Hermes WebUI | Web 管理界面（聊天/配置/运维）|
+| `3000` | KasmVNC | Debian KDE 桌面（浏览器访问，HTTP） |
+| `3001` | KasmVNC | Debian KDE 桌面（浏览器访问，HTTPS） |
+| `8648` | Hermes WebUI | Web 管理界面（聊天/配置/运维）|
 | `8642` | Hermes Gateway | OpenAI 兼容 API（WebUI 自动管理）|
+
+> 💡 ModelScope/HuggingFace 部署时，设置 `CUSTOM_PORT=7860` 将桌面映射到云平台默认端口。
 
 ## 快速开始（本地运行）
 
@@ -33,30 +44,28 @@ docker run -d \
   --name hermes-agent \
   -p 3000:3000 \
   -p 3001:3001 \
-  -p 8787:8787 \
+  -p 8648:8648 \
   -p 8642:8642 \
   -v hermes-data:/config \
   ghcr.io/comedy1024/hermes-agent-desktop:latest
 ```
 
 启动后：
-1. 打开 `http://localhost:8787` — Hermes WebUI 管理界面（首次配置 LLM API Key）
-2. 打开 `http://localhost:3000` — Linux KDE 桌面（noVNC）
+1. 打开 `http://localhost:3000` — Linux KDE 桌面（KasmVNC）
+2. 打开 `http://localhost:8648` — Hermes WebUI 管理界面（首次配置 LLM API Key）
 3. `http://localhost:8642` — Hermes Gateway OpenAI 兼容 API
 
 ## 常用环境变量
 
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
+| `CUSTOM_PORT` | KasmVNC HTTP 端口（云平台设为 7860） | `3000` |
+| `CUSTOM_HTTPS_PORT` | KasmVNC HTTPS 端口 | `3001` |
+| `PASSWORD` | 桌面访问密码 | （空，无密码）|
 | `OPENAI_API_KEY` | OpenAI API Key | — |
 | `ANTHROPIC_API_KEY` | Anthropic API Key | — |
 | `OPENROUTER_API_KEY` | OpenRouter API Key | — |
-| `PASSWORD` | KDE 桌面访问密码 | （空，无密码）|
 | `HERMES_HOME` | Hermes 数据目录 | `/config/hermes-data` |
-| `HERMES_WEBUI_PORT` | WebUI 端口 | `8787` |
-| `HERMES_WEBUI_PASSWORD` | WebUI 访问密码（可选）| — |
-| `GATEWAY_ALLOW_ALL_USERS` | 允许所有用户访问 Gateway | `false` |
-| `API_SERVER_KEY` | Gateway API 鉴权 Key（启用 session 保持）| — |
 
 > 完整配置项请参考容器内的 `/config/hermes-data/.env` 模板文件。
 
@@ -76,7 +85,7 @@ docker run -d \
 │   ├── config.yaml    # Hermes Agent 主配置
 │   ├── SOUL.md        # Agent 人格定义
 │   ├── memories/      # 长期记忆
-│   ├── skills/        # 技能库（78 个预装）
+│   ├── skills/        # 技能库
 │   ├── sessions/      # 会话记录
 │   ├── logs/          # 运行日志
 │   ├── workspace/     # 工作目录
@@ -117,24 +126,11 @@ API_SERVER_KEY=your_random_secret_key
 
 保存后在 WebUI 中重启 Gateway 即可。
 
-### HuggingFace Spaces 数据持久化
-
-在 HF Spaces 设置中开启 **Persistent Storage**，然后在 `Dockerfile` 中重定向数据目录：
-
-```dockerfile
-FROM ghcr.io/comedy1024/hermes-agent-desktop:latest
-
-ENV HERMES_HOME=/data/hermes-data
-ENV HERMES_WEBUI_STATE_DIR=/data/hermes-data/.hermes/webui-mvp
-ENV HERMES_WEBUI_DEFAULT_WORKSPACE=/data/hermes-data
-
-EXPOSE 7860
-```
-
 ## 部署到 ModelScope Spaces
 
-> **注意**：本镜像基于 linuxserver/webtop，使用 s6-overlay 管理进程（必须以 PID 1 运行）。
-> 从 v2026-04-16 起已内置 PID 1 兼容层（`s6-init.sh`），可自动适配云平台环境。
+> **注意**：本镜像基于 linuxserver/baseimage-kasmvnc，使用 KasmVNC（WebSocket VNC）
+> 和 s6-overlay 管理进程。从 v2026-04-18 起已切换到 KasmVNC 方案，
+> 完美兼容云平台单端口 HTTP 反向代理。内置 PID 1 兼容层。
 
 1. 在 ModelScope 创建一个新的创空间（SDK 选择 Docker）
 2. 在创空间仓库中添加 `Dockerfile` 文件：
@@ -142,7 +138,9 @@ EXPOSE 7860
 FROM ghcr.io/comedy1024/hermes-agent-desktop:latest
 
 # ModelScope 创空间要求应用监听 7860 端口
-# 我们将 noVNC 桌面映射到 7860（也可改为 8787 映射 WebUI）
+# KasmVNC 通过 CUSTOM_PORT 环境变量切换端口
+ENV CUSTOM_PORT=7860
+
 EXPOSE 7860
 ```
 3. 在创空间「设置」中添加所需环境变量（如 `OPENAI_API_KEY`）
@@ -154,8 +152,8 @@ EXPOSE 7860
 
 | 映射端口 | 访问内容 | 说明 |
 |----------|----------|------|
-| `7860→3000` | KDE 桌面 | 浏览器访问完整 Linux 桌面 |
-| `7860→8787` | Hermes WebUI | 仅使用聊天/管理界面 |
+| `7860→3000` | KDE 桌面 | 浏览器访问完整 Linux 桌面（默认） |
+| `7860→8648` | Hermes WebUI | 仅使用聊天/管理界面 |
 
 如需同时访问桌面和 WebUI，建议使用 Docker 自行部署（见上方快速开始）。
 
@@ -163,9 +161,8 @@ EXPOSE 7860
 
 **Q: 创空间启动报错 `s6-overlay-suexec: fatal: can only run as pid 1`**
 
-这是旧版本问题，从 v2026-04-16 起已修复。请拉取最新镜像。如果仍遇到此问题，
-说明创空间的容器运行时使用了特殊的 PID 命名空间隔离。请确保使用最新版镜像，
-其中包含 `s6-init.sh` PID 1 兼容层。
+从 v2026-04-16 起已修复。请拉取最新镜像。如果仍遇到此问题，
+请确保使用最新版镜像，其中包含 `s6-init.sh` PID 1 兼容层。
 
 ## 部署到 HuggingFace Spaces
 
@@ -175,11 +172,10 @@ EXPOSE 7860
 FROM ghcr.io/comedy1024/hermes-agent-desktop:latest
 
 ENV HERMES_HOME=/data/hermes-data
-ENV HERMES_WEBUI_STATE_DIR=/data/hermes-data/.hermes/webui-mvp
-ENV HERMES_WEBUI_DEFAULT_WORKSPACE=/data/hermes-data
+ENV CUSTOM_PORT=7860
 
 EXPOSE 7860
-EXPOSE 8787
+EXPOSE 8648
 EXPOSE 8642
 ```
 
@@ -193,18 +189,21 @@ EXPOSE 8642
 
 ### 构建流程
 
-1. 基于 `lscr.io/linuxserver/webtop:debian-kde`（Debian 13 Trixie + KDE）
-2. 使用 uv 安装 hermes-agent[all] 到 /opt/hermes-venv（CLI + WebUI 共享）
-3. NodeSource 安装 Node.js 22 + npm（Playwright + WhatsApp bridge）
-4. 设置桌面快捷方式、壁纸、开机自启
-5. 推送多架构镜像到 ghcr.io
+1. 基于 `ghcr.io/linuxserver/baseimage-kasmvnc:debianbookworm`（Debian 12 + KasmVNC）
+2. 安装 KDE Plasma 桌面环境（kde-plasma-desktop + konsole + dolphin）
+3. 使用 uv 安装 hermes-agent[all] 到 /opt/hermes-venv
+4. NodeSource 安装 Node.js 22 + npm（Playwright + WhatsApp bridge）
+5. 构建 EKKOLearnAI/hermes-web-ui（Vue 3 + Koa 2 BFF）
+6. 设置桌面快捷方式、壁纸、开机自启
+7. 推送多架构镜像到 ghcr.io
 
 ## 相关项目
 
 - [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) — Hermes Agent 上游
-- [nesquena/hermes-webui](https://github.com/nesquena/hermes-webui) — Hermes WebUI 上游
-- [linuxserver/docker-webtop](https://github.com/linuxserver/docker-webtop) — Linux GUI 桌面基础镜像
+- [EKKOLearnAI/hermes-web-ui](https://github.com/EKKOLearnAI/hermes-web-ui) — Hermes WebUI 上游
+- [linuxserver/docker-baseimage-kasmvnc](https://github.com/linuxserver/docker-baseimage-kasmvnc) — KasmVNC 基础镜像
+- [kasmtech/KasmVNC](https://github.com/kasmtech/KasmVNC) — KasmVNC 远程桌面
 
 ## License
 
-本仓库遵循 [MIT](LICENSE) 协议，与上游 hermes-webui 保持一致。
+本仓库遵循 [MIT](LICENSE) 协议。

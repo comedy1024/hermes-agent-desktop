@@ -1,19 +1,24 @@
 # ================================================================
 # hermes-agent-desktop: Linux GUI Desktop + Hermes Agent + Hermes WebUI
-# Based on: lscr.io/linuxserver/webtop:debian-kde (official LinuxServer.io)
+# Based on: ghcr.io/linuxserver/baseimage-kasmvnc:debianbookworm (KasmVNC)
 # ================================================================
 #
-# Why Debian over Ubuntu:
-#   - webtop:ubuntu-kde is based on Ubuntu 26.04 (too new, many packages
-#     not yet compatible: Playwright, python-olm CMake, Node.js npm missing)
-#   - webtop:debian-kde is based on Debian 13 Trixie (stable, Python 3.13,
-#     well-supported by all hermes-agent dependencies)
-#   - The old openclaw_computer image was also Debian 12 bookworm
+# Why KasmVNC over Selkies:
+#   - Cloud platforms (ModelScope/HuggingFace) only expose a single HTTP port
+#   - KasmVNC uses WebSocket VNC — works perfectly behind HTTP reverse proxy
+#   - Selkies uses WebRTC — requires independent media streams that cannot
+#     penetrate HTTP-only reverse proxies
+#   - KasmVNC's built-in Nginx handles HTTP→WebSocket upgrade automatically
+#
+# Why baseimage-kasmvnc over webtop:
+#   - webtop switched to Selkies in June 2025, no KasmVNC variant exists
+#   - baseimage-kasmvnc is the official LinuxServer KasmVNC base image
+#   - Same s6-overlay init system, same /config persistence model
+#   - We install KDE Plasma ourselves (baseimage-kasmvnc ships with Openbox)
 #
 # Python strategy:
-#   Debian 13 Trixie ships Python 3.13 — matches hermes-agent's official
-#   Dockerfile exactly. No version management needed.
-#   We create a venv at /opt/hermes-venv using system Python 3.13.
+#   Debian 12 Bookworm ships Python 3.11 — compatible with hermes-agent.
+#   We create a venv at /opt/hermes-venv using system Python.
 #
 # WebUI: EKKOLearnAI/hermes-web-ui
 #   - Vue 3 + TypeScript + Vite + Naive UI (rich UI)
@@ -23,9 +28,8 @@
 #   - Runs: node dist/server/index.js (port 8648 → proxies to 8642)
 #
 # Ports:
-#   3000 - Nginx/Selkies web desktop (HTTP, normal Docker via s6-overlay)
-#   3001 - Nginx/Selkies web desktop (HTTPS, normal Docker via s6-overlay)
-#   7860 - Nginx/Selkies web desktop (Cloud mode, ModelScope/HuggingFace)
+#   3000 - KasmVNC desktop (HTTP, default, set CUSTOM_PORT=7860 for cloud)
+#   3001 - KasmVNC desktop (HTTPS)
 #   8648 - Hermes WebUI (BFF server)
 #   8642 - Hermes Agent Gateway API
 
@@ -47,27 +51,26 @@ RUN git clone https://github.com/EKKOLearnAI/hermes-web-ui.git . && \
     rm -rf /root/.cache /root/.npm
 
 # ---- Stage 2: Final image ----
-# Official LinuxServer.io Debian KDE desktop (stable, well-supported)
-# https://docs.linuxserver.io/images/docker-webtop/
-FROM lscr.io/linuxserver/webtop:debian-kde
+# Official LinuxServer.io KasmVNC base image (WebSocket VNC, cloud-friendly)
+# https://docs.linuxserver.io/images/docker-baseimage-kasmvnc/
+FROM ghcr.io/linuxserver/baseimage-kasmvnc:debianbookworm
 
 LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent-desktop
-LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux GUI Desktop"
+LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux GUI Desktop (KasmVNC)"
 LABEL org.opencontainers.image.licenses=MIT
 
-# Install system dependencies
-# Debian 13 Trixie has Python 3.13, cmake 3.31 — all compatible with hermes-agent
-# NOTE: webtop pre-installs nodesource Node.js 22 which CONFLICTS with Debian's npm package.
-# We use the NodeSource setup script instead to get the full nodejs+npm bundle.
+# Install system dependencies + KDE Plasma desktop
+# Debian 12 Bookworm: Python 3.11, cmake 3.25 — all compatible with hermes-agent
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc cmake \
     python3 python3-pip python3-venv python3-dev \
     libffi-dev libolm-dev \
     ripgrep ffmpeg procps curl git \
+    kde-plasma-desktop konsole kwrite dolphin \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 22 + npm via NodeSource (webtop's nodejs lacks npm)
+# Install Node.js 22 + npm via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
@@ -75,15 +78,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 # Install uv for fast Python package management
 # pip's resolver fails with "resolution-too-deep" on hermes-agent[all]'s complex
 # dependency graph. uv's resolver handles it efficiently (same as official Dockerfile).
-# NOTE: webtop sets HOME=/config, so uv installs to /config/.local/bin
+# NOTE: baseimage-kasmvnc sets HOME=/config, so uv installs to /config/.local/bin
 ENV HOME="/config"
 RUN curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh
 ENV PATH="/config/.local/bin:$PATH"
 
 # ---- Clone and install Hermes Agent ----
-# Debian 13's Python 3.13 matches the official hermes-agent Dockerfile.
+# Debian 12's Python 3.11 is compatible with hermes-agent.
 # We create a venv at /opt/hermes-venv and install hermes-agent[all] into it.
-# Both the CLI `hermes` command and Hermes WebUI share this same venv.
 RUN python3 -m venv /opt/hermes-venv && \
     git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
     cd /opt/hermes && \
@@ -116,6 +118,10 @@ ENV HERMES_BIN=/opt/hermes-venv/bin/hermes
 ENV HERMES_HOME=/config/hermes-data
 ENV NODE_ENV=production
 
+# ---- Copy desktop environment startup script ----
+# This replaces the default Openbox with KDE Plasma
+COPY root/ /root/
+
 # ---- Install Hermes WebUI as a supervised service ----
 # webtop uses s6-overlay for init; we add it to /custom-cont-init.d/ so it starts on each boot
 COPY hermes-webui-service.sh /opt/hermes-webui-service.sh
@@ -128,17 +134,17 @@ RUN mkdir -p /custom-cont-init.d && \
     chmod +x /custom-cont-init.d/10-hermes-webui.sh
 
 # ---- s6-overlay PID 1 compatibility wrapper ----
-# Cloud platforms (ModelScope Spaces, HuggingFace Spaces, Azure ACI, etc.)
-# bypass Docker ENTRYPOINT and directly run: /bin/sh -c /init
+# Cloud platforms (ModelScope Spaces, HuggingFace Spaces) bypass Docker ENTRYPOINT
+# and directly run: /bin/sh -c /init
 # This prevents s6-overlay from becoming PID 1, causing fatal error.
 #
 # Fix: Replace /init with our wrapper that:
 #   1. Detects if running as PID 1 (normal Docker) -> exec original s6-overlay
 #   2. If not PID 1, tries unshare --pid (requires CAP_SYS_ADMIN)
-#   3. If unshare fails (restricted env), falls back to cloud-init mode
-#      which completely bypasses s6-overlay and starts services manually
+#   3. If unshare fails (restricted env), falls back to manual service startup
 #
-# The original s6-overlay init is preserved at /init.s6.
+# NOTE: With KasmVNC, the cloud fallback is MUCH simpler — KasmVNC's built-in
+# Nginx handles HTTP→WebSocket upgrade natively. No custom Nginx config needed.
 COPY entrypoint-cloud.sh /entrypoint-cloud.sh
 RUN chmod +x /entrypoint-cloud.sh
 COPY s6-init.sh /s6-init-wrapper.sh
@@ -268,21 +274,21 @@ echo "[hermes] Bootstrap complete"\n\
     chmod +x /custom-cont-init.d/20-hermes-bootstrap.sh
 
 # Expose ports
-# 7860      - Nginx/Selkies desktop (default for ModelScope/HuggingFace, maps to app_port)
-# 3000/3001 - webtop KDE desktop (HTTP/HTTPS, used in normal Docker via s6-overlay)
-# 8648      - Hermes WebUI (BFF server)
-# 8642      - Hermes Agent Gateway API
-EXPOSE 7860 3000 3001 8648 8642
+# 3000   - KasmVNC desktop (HTTP, set CUSTOM_PORT=7860 for ModelScope/HuggingFace)
+# 3001   - KasmVNC desktop (HTTPS)
+# 8648   - Hermes WebUI (BFF server)
+# 8642   - Hermes Agent Gateway API
+EXPOSE 3000 3001 8648 8642
 
-# Data volume — webtop uses /config for all persistent data
+# Data volume — baseimage-kasmvnc uses /config for all persistent data
 VOLUME ["/config"]
 
-# Health check — check Nginx/Selkies on 7860 (cloud) or WebUI on 8648
+# Health check — check KasmVNC on 3000 or WebUI on 8648
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -sf http://localhost:7860/ > /dev/null || curl -sf http://localhost:3000/ > /dev/null || curl -sf http://localhost:8648/ > /dev/null || exit 1
+    CMD curl -sf http://localhost:3000/ > /dev/null || curl -sf http://localhost:8648/ > /dev/null || exit 1
 
 # Entrypoint: /init is now our PID 1 wrapper (same path as original s6-overlay init)
 # - Normal Docker: detects PID 1, exec's /init.s6 directly (zero overhead)
-# - Cloud platforms: detects non-PID-1, uses unshare --pid namespace
-# This works even when platforms bypass ENTRYPOINT and run /init directly.
+# - Cloud platforms: detects non-PID-1, falls back to cloud-init mode
+#   (KasmVNC's built-in Nginx handles HTTP→WebSocket upgrade natively)
 ENTRYPOINT ["/init"]
