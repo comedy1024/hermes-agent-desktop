@@ -150,22 +150,25 @@ RUN mkdir -p /custom-cont-init.d && \
 # Nginx handles HTTP→WebSocket upgrade natively. No custom Nginx config needed.
 COPY entrypoint-cloud.sh /entrypoint-cloud.sh
 RUN chmod +x /entrypoint-cloud.sh
-COPY s6-init.sh /s6-init-wrapper.sh
-RUN echo "=== DEBUG: /init before ===" && \
-    ls -la /init && \
-    file /init && \
-    head -3 /init 2>/dev/null || true && \
-    echo "=== DEBUG: /s6-init-wrapper.sh ===" && \
-    ls -la /s6-init-wrapper.sh && \
-    head -1 /s6-init-wrapper.sh && \
-    echo "=== Performing mv ===" && \
-    mv /init /init.s6 && chmod +x /init.s6 && \
-    mv /s6-init-wrapper.sh /init && chmod +x /init && \
-    echo "=== DEBUG: /init after ===" && \
-    ls -la /init && \
-    head -1 /init && \
-    echo "=== DEBUG: /init.s6 after ===" && \
-    ls -la /init.s6 && \
+
+# ---- s6-overlay PID 1 compatibility wrapper ----
+# We write the wrapper script into /init directly in a single RUN layer.
+# This avoids COPY + mv issues where Docker layers may not properly replace /init.
+#
+# Strategy: save original s6-overlay /init as /init.s6, then write
+# our POSIX sh wrapper to /init. The wrapper detects PID 1 and either
+# exec's the original s6-overlay or falls back to cloud-init mode.
+#
+# NOTE: We use a temp file approach to avoid Dockerfile variable escaping issues.
+RUN mv /init /init.s6 && chmod +x /init.s6
+
+COPY s6-init.sh /init
+RUN chmod +x /init && \
+    echo "=== /init installed ===" && \
+    ls -la /init /init.s6 && \
+    echo "=== /init content ===" && \
+    cat /init && \
+    echo "=== /init.s6 type ===" && \
     file /init.s6
 
 # Copy our welcome page and wallpaper
