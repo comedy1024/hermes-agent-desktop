@@ -99,7 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     qml-module-qtquick-controls2 \
     qml-module-qtquick-templates2 \
     qml-module-qtgraphicaleffects \
-    kdeplasma-addons \
+    plasma-widgets-addons \
     kde-standard \
     fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 fcitx5-frontend-qt5 fcitx5-config-qt \
     tigervnc-standalone-server novnc websockify \
