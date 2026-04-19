@@ -77,6 +77,10 @@ chmod 700 /run/user/${PUID}
 # Fix config directory ownership
 chown -R abc:abc /config/.cache /config/.config /config/.vnc /config/.local 2>/dev/null || true
 
+# CRITICAL: Fix startwm.sh permissions — Docker COPY from Windows may lose permissions
+# and /defaults/ directory itself may be restricted (baseimage-kasmvnc default)
+chmod -R 755 /defaults/ 2>/dev/null || true
+
 # Fix Fontconfig cache
 mkdir -p /config/.cache/fontconfig
 chown -R abc:abc /config/.cache/fontconfig 2>/dev/null || true
@@ -207,6 +211,7 @@ echo "[entrypoint-cloud] abc UID=${ABC_UID}, XDG_RUNTIME_DIR=${ABC_XDG_RUNTIME_D
 # dbus-launch create the session bus and set the address dynamically.
 # If we pre-set it to a non-existent path, KDE components will fail to connect.
 if [ -f /defaults/startwm.sh ]; then
+    echo "[entrypoint-cloud] startwm.sh permissions: $(ls -la /defaults/startwm.sh)"
     runuser -u abc -- env \
         DISPLAY="${DISPLAY}" \
         HOME=/config \
@@ -221,6 +226,21 @@ if [ -f /defaults/startwm.sh ]; then
         SDL_IM_MODULE=fcitx \
         /bin/bash /defaults/startwm.sh &
     DE_PID=$!
+    # Quick check — if startwm.sh fails immediately, the desktop won't work
+    sleep 2
+    if ! kill -0 $DE_PID 2>/dev/null; then
+        echo "[entrypoint-cloud] WARNING: startwm.sh exited immediately, trying startplasma-x11 directly..."
+        runuser -u abc -- env \
+            DISPLAY="${DISPLAY}" \
+            HOME=/config \
+            USER=abc \
+            XDG_RUNTIME_DIR="${ABC_XDG_RUNTIME_DIR}" \
+            XDG_CONFIG_HOME=/config/.config \
+            XDG_CACHE_HOME=/config/.cache \
+            XDG_DATA_HOME=/config/.local/share \
+            startplasma-x11 &
+        DE_PID=$!
+    fi
 else
     runuser -u abc -- env \
         DISPLAY="${DISPLAY}" \

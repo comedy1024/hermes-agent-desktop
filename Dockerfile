@@ -176,7 +176,9 @@ ENV NODE_ENV=production
 # NOTE: COPY root/ / copies root/defaults/startwm.sh → /defaults/startwm.sh
 # (baseimage-kasmvnc expects startwm.sh at /defaults/startwm.sh)
 COPY root/ /
-RUN chmod +x /defaults/startwm.sh && \
+# CRITICAL: Fix permissions for all scripts copied from Windows host
+# COPY doesn't preserve execute permissions, and /defaults/ dir may be restricted
+RUN chmod -R 755 /defaults/ && \
     sed -i 's/\r$//' /defaults/startwm.sh
 
 # ---- Disable KDE lock screen and power management ----
