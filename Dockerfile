@@ -73,13 +73,14 @@ LABEL org.opencontainers.image.licenses=MIT
 #
 # Missing KDE/Qt dependencies (fixes QML module errors):
 #   - kwin-x11: window manager (kde-plasma-desktop doesn't pull it in on Debian 12)
-#   - kde-plasma-workspace: complete plasma workspace (fixes activity manager, etc.)
+#   - plasma-workspace: complete plasma workspace (fixes activity manager, etc.)
+#     NOTE: Debian Bookworm package is "plasma-workspace", NOT "kde-plasma-workspace"
 #   - Various QML modules for system tray, notifications, kickoff menu, etc.
 #   - kactivitymanagerd: activity manager daemon (fixes "Aborting shell load")
 #   - plasma-pa: PulseAudio volume control (fixes "org.kde.plasma.private.volume" missing)
 #
 # KEY INSIGHT: kde-plasma-desktop is a metapackage that doesn't pull in everything.
-# We need kde-plasma-workspace + kde-standard + specific QML modules for a stable desktop.
+# We need plasma-workspace + kde-standard + specific QML modules for a stable desktop.
 # Without kwin-x11 → no window manager → can't close/move windows, menus freeze.
 # Without kactivitymanagerd → plasma shell aborts on load.
 USER root
@@ -88,7 +89,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv python3-dev \
     libffi-dev libolm-dev \
     ripgrep ffmpeg procps curl git \
-    kde-plasma-desktop kde-plasma-workspace kwin-x11 konsole kwrite dolphin \
+    kde-plasma-desktop plasma-workspace kwin-x11 konsole kwrite dolphin \
     kactivitymanagerd \
     plasma-pa \
     qml-module-org-kde-kitemmodels \
@@ -98,7 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     qml-module-qtquick-controls2 \
     qml-module-qtquick-templates2 \
     qml-module-qtgraphicaleffects \
-    plasma-workspace-widgets \
+    kdeplasma-addons \
     kde-standard \
     fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 fcitx5-frontend-qt5 fcitx5-config-qt \
     tigervnc-standalone-server novnc websockify \
@@ -314,7 +315,7 @@ RUN mkdir -p /config/Desktop && \
         > /config/Desktop/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /config/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
         > /config/Desktop/hermes-terminal.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Web Browser\nComment=Web Browser\nExec=/usr/bin/google-chrome-stable --no-sandbox %u || chromium --no-sandbox %u\nIcon=google-chrome\nTerminal=false\nCategories=Network;WebBrowser;\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Web Browser\nComment=Web Browser\nExec=/usr/bin/google-chrome-stable --no-sandbox --disable-dev-shm-usage --disable-gpu %u || chromium --no-sandbox --disable-dev-shm-usage --disable-gpu %u\nIcon=google-chrome\nTerminal=false\nCategories=Network;WebBrowser;\n' \
         > /config/Desktop/web-browser.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=输入法配置\nComment=Fcitx5 Input Method\nExec=fcitx5-configtool\nIcon=fcitx\nTerminal=false\nCategories=Settings;\n' \
         > /config/Desktop/fcitx5-config.desktop && \
@@ -322,9 +323,9 @@ RUN mkdir -p /config/Desktop && \
 
 # Create KDE autostart entries
 RUN mkdir -p /config/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && /usr/bin/google-chrome-stable --no-sandbox http://localhost:8648 || chromium --no-sandbox http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && /usr/bin/google-chrome-stable --no-sandbox --disable-dev-shm-usage --disable-gpu http://localhost:8648 || chromium --no-sandbox --disable-dev-shm-usage --disable-gpu http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-webui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && /usr/bin/google-chrome-stable --no-sandbox /opt/welcome.html || chromium --no-sandbox /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && /usr/bin/google-chrome-stable --no-sandbox --disable-dev-shm-usage --disable-gpu /opt/welcome.html || chromium --no-sandbox --disable-dev-shm-usage --disable-gpu /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /config/hermes-data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-terminal.desktop && \

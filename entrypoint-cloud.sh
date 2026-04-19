@@ -199,14 +199,63 @@ chmod 700 "${ABC_XDG_RUNTIME_DIR}"
 
 echo "[entrypoint-cloud] abc UID=${ABC_UID}, XDG_RUNTIME_DIR=${ABC_XDG_RUNTIME_DIR}"
 
+# Use runuser instead of su — it preserves environment variables correctly
+# and doesn't reset them by reading .profile/.bashrc like su - does.
+# This ensures XDG_RUNTIME_DIR, DISPLAY, and input method vars are inherited.
+#
+# IMPORTANT: Do NOT set DBUS_SESSION_BUS_ADDRESS here — let startwm.sh's
+# dbus-launch create the session bus and set the address dynamically.
+# If we pre-set it to a non-existent path, KDE components will fail to connect.
 if [ -f /defaults/startwm.sh ]; then
-    su - abc -c "export DISPLAY=${DISPLAY} HOME=/config USER=abc XDG_RUNTIME_DIR=${ABC_XDG_RUNTIME_DIR} XDG_CONFIG_HOME=/config/.config XDG_CACHE_HOME=/config/.cache XDG_DATA_HOME=/config/.local/share GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx SDL_IM_MODULE=fcitx DBUS_SESSION_BUS_ADDRESS=unix:path=${ABC_XDG_RUNTIME_DIR}/bus; /bin/bash /defaults/startwm.sh" &
+    runuser -u abc -- env \
+        DISPLAY="${DISPLAY}" \
+        HOME=/config \
+        USER=abc \
+        XDG_RUNTIME_DIR="${ABC_XDG_RUNTIME_DIR}" \
+        XDG_CONFIG_HOME=/config/.config \
+        XDG_CACHE_HOME=/config/.cache \
+        XDG_DATA_HOME=/config/.local/share \
+        GTK_IM_MODULE=fcitx \
+        QT_IM_MODULE=fcitx \
+        XMODIFIERS=@im=fcitx \
+        SDL_IM_MODULE=fcitx \
+        /bin/bash /defaults/startwm.sh &
     DE_PID=$!
 else
-    su - abc -c "export DISPLAY=${DISPLAY} HOME=/config USER=abc XDG_RUNTIME_DIR=${ABC_XDG_RUNTIME_DIR} XDG_CONFIG_HOME=/config/.config XDG_CACHE_HOME=/config/.cache XDG_DATA_HOME=/config/.local/share; startplasma-x11" &
+    runuser -u abc -- env \
+        DISPLAY="${DISPLAY}" \
+        HOME=/config \
+        USER=abc \
+        XDG_RUNTIME_DIR="${ABC_XDG_RUNTIME_DIR}" \
+        XDG_CONFIG_HOME=/config/.config \
+        XDG_CACHE_HOME=/config/.cache \
+        XDG_DATA_HOME=/config/.local/share \
+        GTK_IM_MODULE=fcitx \
+        QT_IM_MODULE=fcitx \
+        XMODIFIERS=@im=fcitx \
+        SDL_IM_MODULE=fcitx \
+        startplasma-x11 &
     DE_PID=$!
 fi
 sleep 2
+
+# Wait for D-Bus session bus to be available (started by startwm.sh's dbus-launch)
+# Write the bus address to a file so Chrome and other processes can find it
+echo "[entrypoint-cloud] Waiting for D-Bus session bus..."
+DBUS_WAIT=0
+while [ $DBUS_WAIT -lt 15 ]; do
+    if [ -S "${ABC_XDG_RUNTIME_DIR}/bus" ]; then
+        echo "[entrypoint-cloud] D-Bus session bus is ready at ${ABC_XDG_RUNTIME_DIR}/bus"
+        break
+    fi
+    # Also check for dbus-launch output file
+    if [ -f "${ABC_XDG_RUNTIME_DIR}/dbus-session-address" ]; then
+        echo "[entrypoint-cloud] D-Bus session address file found"
+        break
+    fi
+    sleep 1
+    DBUS_WAIT=$((DBUS_WAIT + 1))
+done
 
 # ================================================================
 # Start noVNC + websockify — bridges VNC to WebSocket/HTTP
@@ -245,27 +294,9 @@ if [ -n "$NOVNC_WEB" ]; then
 <title>Hermes Agent Desktop</title>
 <style>
     body { margin: 0; padding: 0; overflow: hidden; background: #000; }
-    #noVNC_canvas { width: 100vw; height: 100vh; }
 </style>
 </head>
 <body>
-<script type="module">
-    // Auto-connect to VNC without showing the control bar
-    window.addEventListener('load', function() {
-        // Wait for noVNC to initialize, then auto-connect
-        var checkInterval = setInterval(function() {
-            // Try to find and click the connect button, or trigger connection
-            var connectBtn = document.querySelector('#noVNC_connect_button');
-            if (connectBtn) {
-                connectBtn.click();
-                clearInterval(checkInterval);
-            }
-        }, 200);
-        
-        // Stop trying after 5 seconds
-        setTimeout(function() { clearInterval(checkInterval); }, 5000);
-    });
-</script>
 <iframe id="vnc_frame" src="vnc.html?autoconnect=true&resize=scale" 
     style="width:100vw;height:100vh;border:none;margin:0;padding:0;"></iframe>
 </body>

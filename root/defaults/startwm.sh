@@ -66,9 +66,16 @@ kwriteconfig5 --file powermanagementprofilesrc --group AC --key SleepOnPowerButt
 balooctl6 disable 2>/dev/null || true
 
 # Start D-Bus session bus if not already running
+# CRITICAL: Write the session address to a file so other processes (Chrome, etc.)
+# can find it. Without this, Chrome shows "Failed to connect to the bus" errors.
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax 2>/dev/null) || true
     echo "[startwm] Started D-Bus session: $DBUS_SESSION_BUS_ADDRESS"
+    # Save D-Bus session address for other processes
+    if [ -n "$DBUS_SESSION_BUS_ADDRESS" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
+        echo "$DBUS_SESSION_BUS_ADDRESS" > "${XDG_RUNTIME_DIR}/dbus-session-address"
+        chmod 600 "${XDG_RUNTIME_DIR}/dbus-session-address" 2>/dev/null || true
+    fi
 fi
 
 # Start fcitx5 input method daemon
