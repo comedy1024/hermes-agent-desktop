@@ -142,6 +142,16 @@ ENV NODE_ENV=production
 # (baseimage-kasmvnc expects startwm.sh at /defaults/startwm.sh)
 COPY root/ /
 
+# ---- Disable KDE lock screen and power management ----
+# VNC desktops should never lock or sleep — there's no physical screen to unlock
+RUN mkdir -p /config/.config && \
+    printf '[Daemon]\nAutolock=false\nLockOnResume=false\nTimeout=0\n' \
+        > /config/.config/kscreenlockerrc && \
+    printf '[Daemon]\nAutolock=false\nLockOnResume=false\nTimeout=0\n' \
+        > /etc/xdg/kscreenlockerrc && \
+    mkdir -p /etc/xdg && \
+    printf '[Wallpapers]\ndefaultWallpaper=hermes-agent-desktop\n' > /etc/xdg/plasmarc
+
 # ---- Install Hermes WebUI as a supervised service ----
 # webtop uses s6-overlay for init; we add it to /custom-cont-init.d/ so it starts on each boot
 COPY hermes-webui-service.sh /opt/hermes-webui-service.sh
