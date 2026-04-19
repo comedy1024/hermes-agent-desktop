@@ -8,6 +8,14 @@
 #
 # In cloud mode, environment variables are passed through su.
 # In s6 mode, they need to be set here.
+#
+# KEY: XDG_RUNTIME_DIR MUST match the UID of the current user.
+# If running as abc (UID=911), it must be /run/user/911.
+# If it's wrong, KDE components will fail with:
+#   - "runtime directory not owned by UID" errors
+#   - kwin_x11 crash (no window manager)
+#   - kactivitymanagerd not running (shell load abort)
+#   - Desktop freezes, menus don't work
 # ================================================================
 
 # Ensure input method environment (may already be set by caller)
@@ -16,11 +24,19 @@ export QT_IM_MODULE=${QT_IM_MODULE:-fcitx}
 export XMODIFIERS=${XMODIFIERS:-@im=fcitx}
 export SDL_IM_MODULE=${SDL_IM_MODULE:-fcitx}
 
-# Ensure XDG dirs
-export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+# Ensure XDG dirs — CRITICAL: XDG_RUNTIME_DIR must match current UID
+CURRENT_UID=$(id -u)
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/${CURRENT_UID}}
 export XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 export XDG_CACHE_HOME=${XDG_CACHE_HOME:-$HOME/.cache}
+export XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
+
+# Create and fix ownership of XDG_RUNTIME_DIR
 mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+chown ${CURRENT_UID}:${CURRENT_UID} "$XDG_RUNTIME_DIR" 2>/dev/null || true
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+echo "[startwm] Running as UID=${CURRENT_UID}, XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
 
 # Disable KDE lock screen (critical for VNC — no physical screen to unlock)
 mkdir -p "$XDG_CONFIG_HOME"
@@ -48,6 +64,12 @@ kwriteconfig5 --file powermanagementprofilesrc --group AC --key SleepOnPowerButt
 
 # Disable Baloo file indexing (wastes CPU in VNC)
 balooctl6 disable 2>/dev/null || true
+
+# Start D-Bus session bus if not already running
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    eval $(dbus-launch --sh-syntax 2>/dev/null) || true
+    echo "[startwm] Started D-Bus session: $DBUS_SESSION_BUS_ADDRESS"
+fi
 
 # Start fcitx5 input method daemon
 if command -v fcitx5 >/dev/null 2>&1; then

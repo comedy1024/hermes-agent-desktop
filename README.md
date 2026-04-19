@@ -61,6 +61,7 @@ docker run -d \
 |--------|------|--------|
 | `CUSTOM_PORT` | KasmVNC HTTP 端口（云平台设为 7860） | `3000` |
 | `CUSTOM_HTTPS_PORT` | KasmVNC HTTPS 端口 | `3001` |
+| `RESOLUTION` | 桌面分辨率（云平台推荐 1024x768） | `1024x768` |
 | `PASSWORD` | 桌面访问密码 | （空，无密码）|
 | `OPENAI_API_KEY` | OpenAI API Key | — |
 | `ANTHROPIC_API_KEY` | Anthropic API Key | — |

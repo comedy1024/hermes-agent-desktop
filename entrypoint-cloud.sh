@@ -26,7 +26,7 @@ export USER=abc
 export PUID=${PUID:-911}
 export PGID=${PGID:-1000}
 export DISPLAY=${DISPLAY:-:1}
-export XDG_RUNTIME_DIR=/run/user/${PUID}
+# NOTE: XDG_RUNTIME_DIR is set per-user below (must match actual UID, not env var)
 export XDG_CONFIG_HOME=/config/.config
 export XDG_CACHE_HOME=/config/.cache
 export XDG_DATA_HOME=/config/.local/share
@@ -43,8 +43,9 @@ export SDL_IM_MODULE=fcitx
 # VNC port (internal, not exposed externally)
 VNC_PORT=5901
 
-# Resolution — 1280x720 is comfortable for cloud platforms
-RESOLUTION=${RESOLUTION:-1280x720}
+# Resolution — 1024x768 is optimal for cloud platforms (smaller = faster + less resource usage)
+# 1280x720 was too large, causing lag and UI issues on constrained cloud instances
+RESOLUTION=${RESOLUTION:-1024x768}
 
 echo "[entrypoint-cloud] Config: DISPLAY=${DISPLAY} VNC_PORT=${VNC_PORT} CLOUD_PORT=${CLOUD_PORT} RESOLUTION=${RESOLUTION}"
 
@@ -163,22 +164,46 @@ echo "[entrypoint-cloud] VNC server is ready on port ${VNC_PORT}."
 # This is CRITICAL: KDE must run as the same user that owns
 # XDG_RUNTIME_DIR (/run/user/911). Running as root causes:
 #   - "runtime directory not owned by UID 0" errors
-#   - kwin_x11 crash (window manager)
-#   - No window decorations / can't close windows
-#   - Activity manager not running
-#   - D-Bus signal failures
+#   - kwin_x11 crash (window manager) → no window decorations
+#   - Activity manager not running → shell load abort
+#   - D-Bus signal failures → menu freeze, desktop hang
+#   - Polkit authentication failure → dialogs freeze
 # ================================================================
-echo "[entrypoint-cloud] Starting KDE Plasma as user abc..."
+
+# Ensure ALL XDG/runtime dirs are correctly owned by abc
+mkdir -p /run/user/${PUID}
+chown -R abc:abc /run/user/${PUID}
+chmod 700 /run/user/${PUID}
+
+# Also fix /run/user/1000 if it exists (baseimage-kasmvnc may create it)
+if [ -d /run/user/1000 ]; then
+    chown -R abc:abc /run/user/1000
+    chmod 700 /run/user/1000
+fi
+
+echo "[entrypoint-cloud] Starting KDE Plasma as user abc (UID=${PUID})..."
 
 # Ensure ICEauthority and Xauthority exist for abc
 touch /config/.ICEauthority /config/.Xauthority 2>/dev/null || true
 chown abc:abc /config/.ICEauthority /config/.Xauthority 2>/dev/null || true
 
+# CRITICAL: Set XDG_RUNTIME_DIR to match the UID of abc user
+# If PUID=911, XDG_RUNTIME_DIR must be /run/user/911
+# The previous bug was setting XDG_RUNTIME_DIR=/run/user/1000 which
+# doesn't match UID 911, causing all KDE components to fail.
+ABC_UID=$(id -u abc)
+ABC_XDG_RUNTIME_DIR="/run/user/${ABC_UID}"
+mkdir -p "${ABC_XDG_RUNTIME_DIR}"
+chown abc:abc "${ABC_XDG_RUNTIME_DIR}"
+chmod 700 "${ABC_XDG_RUNTIME_DIR}"
+
+echo "[entrypoint-cloud] abc UID=${ABC_UID}, XDG_RUNTIME_DIR=${ABC_XDG_RUNTIME_DIR}"
+
 if [ -f /defaults/startwm.sh ]; then
-    su - abc -c "export DISPLAY=${DISPLAY} HOME=/config USER=abc XDG_RUNTIME_DIR=/run/user/${PUID} XDG_CONFIG_HOME=/config/.config GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx; /bin/bash /defaults/startwm.sh" &
+    su - abc -c "export DISPLAY=${DISPLAY} HOME=/config USER=abc XDG_RUNTIME_DIR=${ABC_XDG_RUNTIME_DIR} XDG_CONFIG_HOME=/config/.config XDG_CACHE_HOME=/config/.cache XDG_DATA_HOME=/config/.local/share GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx SDL_IM_MODULE=fcitx DBUS_SESSION_BUS_ADDRESS=unix:path=${ABC_XDG_RUNTIME_DIR}/bus; /bin/bash /defaults/startwm.sh" &
     DE_PID=$!
 else
-    su - abc -c "export DISPLAY=${DISPLAY} HOME=/config USER=abc XDG_RUNTIME_DIR=/run/user/${PUID}; startplasma-x11" &
+    su - abc -c "export DISPLAY=${DISPLAY} HOME=/config USER=abc XDG_RUNTIME_DIR=${ABC_XDG_RUNTIME_DIR} XDG_CONFIG_HOME=/config/.config XDG_CACHE_HOME=/config/.cache XDG_DATA_HOME=/config/.local/share; startplasma-x11" &
     DE_PID=$!
 fi
 sleep 2
@@ -210,22 +235,43 @@ fi
 echo "[entrypoint-cloud] Using websockify: ${WEBSOCKIFY_BIN}"
 if [ -n "$NOVNC_WEB" ]; then
     echo "[entrypoint-cloud] noVNC web root: ${NOVNC_WEB}"
-    # Create index.html that auto-redirects to vnc.html
-    if [ ! -f "${NOVNC_WEB}/index.html" ] || ! grep -q "vnc.html" "${NOVNC_WEB}/index.html" 2>/dev/null; then
-        cat > "${NOVNC_WEB}/index.html" << 'NOVNC_INDEX_EOF'
+    # Create index.html that directly loads the VNC client with auto-connect
+    # KEY: Use vnc.html with autoconnect=true to skip the Connect button
+    # Also set resize=scale to fit the browser window
+    cat > "${NOVNC_WEB}/index.html" << 'NOVNC_INDEX_EOF'
 <!DOCTYPE html>
 <html>
 <head>
-<meta http-equiv="refresh" content="0;url=vnc.html">
 <title>Hermes Agent Desktop</title>
+<style>
+    body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+    #noVNC_canvas { width: 100vw; height: 100vh; }
+</style>
 </head>
 <body>
-<p>Redirecting to <a href="vnc.html">VNC desktop</a>...</p>
+<script type="module">
+    // Auto-connect to VNC without showing the control bar
+    window.addEventListener('load', function() {
+        // Wait for noVNC to initialize, then auto-connect
+        var checkInterval = setInterval(function() {
+            // Try to find and click the connect button, or trigger connection
+            var connectBtn = document.querySelector('#noVNC_connect_button');
+            if (connectBtn) {
+                connectBtn.click();
+                clearInterval(checkInterval);
+            }
+        }, 200);
+        
+        // Stop trying after 5 seconds
+        setTimeout(function() { clearInterval(checkInterval); }, 5000);
+    });
+</script>
+<iframe id="vnc_frame" src="vnc.html?autoconnect=true&resize=scale" 
+    style="width:100vw;height:100vh;border:none;margin:0;padding:0;"></iframe>
 </body>
 </html>
 NOVNC_INDEX_EOF
-        echo "[entrypoint-cloud] Created index.html redirect to vnc.html"
-    fi
+        echo "[entrypoint-cloud] Created index.html with auto-connect to VNC"
     "${WEBSOCKIFY_BIN}" \
         --web "${NOVNC_WEB}" \
         0.0.0.0:${CLOUD_PORT} \

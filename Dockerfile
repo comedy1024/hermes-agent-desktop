@@ -72,10 +72,16 @@ LABEL org.opencontainers.image.licenses=MIT
 #   This is the proven approach used by openclaw_computer on ModelScope.
 #
 # Missing KDE/Qt dependencies (fixes QML module errors):
-#   - qml-module-org-kde-kitemmodels: fixes "module org.kde.kitemmodels is not installed"
 #   - kwin-x11: window manager (kde-plasma-desktop doesn't pull it in on Debian 12)
 #   - kde-plasma-workspace: complete plasma workspace (fixes activity manager, etc.)
-#   - Various QML modules for system tray, notifications, etc.
+#   - Various QML modules for system tray, notifications, kickoff menu, etc.
+#   - kactivitymanagerd: activity manager daemon (fixes "Aborting shell load")
+#   - plasma-pa: PulseAudio volume control (fixes "org.kde.plasma.private.volume" missing)
+#
+# KEY INSIGHT: kde-plasma-desktop is a metapackage that doesn't pull in everything.
+# We need kde-plasma-workspace + kde-standard + specific QML modules for a stable desktop.
+# Without kwin-x11 → no window manager → can't close/move windows, menus freeze.
+# Without kactivitymanagerd → plasma shell aborts on load.
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc cmake \
@@ -83,6 +89,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev libolm-dev \
     ripgrep ffmpeg procps curl git \
     kde-plasma-desktop kde-plasma-workspace kwin-x11 konsole kwrite dolphin \
+    kactivitymanagerd \
+    plasma-pa \
     qml-module-org-kde-kitemmodels \
     qml-module-qt-labs-platform \
     qml-module-qtquick-shapes \
@@ -96,12 +104,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tigervnc-standalone-server novnc websockify \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chromium (multi-arch, unlike Google Chrome which is amd64-only)
-# NOTE: google-chrome-stable only ships amd64 .deb and has massive dependency
-# issues on Debian 12. Chromium is in Debian repos, supports arm64 + amd64.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium && \
-    rm -rf /var/lib/apt/lists/*
+# Install Google Chrome (primary browser, best compatibility)
+# Using Google's official .deb package. On arm64, falls back to Chromium.
+# Google Chrome is preferred over Chromium for better web compatibility,
+# especially with Hermes WebUI and modern web applications.
+RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+        apt-get update && \
+        apt-get install -y --no-install-recommends wget ca-certificates && \
+        wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+        apt-get install -y --no-install-recommends /tmp/chrome.deb || \
+        apt-get install -f -y && \
+        rm -f /tmp/chrome.deb && \
+        rm -rf /var/lib/apt/lists/*; \
+    else \
+        apt-get update && \
+        apt-get install -y --no-install-recommends chromium && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Install Node.js 22 + npm via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
@@ -295,17 +314,17 @@ RUN mkdir -p /config/Desktop && \
         > /config/Desktop/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /config/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
         > /config/Desktop/hermes-terminal.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Chromium Browser\nComment=Web Browser\nExec=chromium --no-sandbox\nIcon=chromium\nTerminal=false\nCategories=Network;WebBrowser;\n' \
-        > /config/Desktop/chromium.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Web Browser\nComment=Web Browser\nExec=/usr/bin/google-chrome-stable --no-sandbox %u || chromium --no-sandbox %u\nIcon=google-chrome\nTerminal=false\nCategories=Network;WebBrowser;\n' \
+        > /config/Desktop/web-browser.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=输入法配置\nComment=Fcitx5 Input Method\nExec=fcitx5-configtool\nIcon=fcitx\nTerminal=false\nCategories=Settings;\n' \
         > /config/Desktop/fcitx5-config.desktop && \
-    chmod +x /config/Desktop/hermes-*.desktop /config/Desktop/chromium.desktop /config/Desktop/fcitx5-config.desktop
+    chmod +x /config/Desktop/hermes-*.desktop /config/Desktop/web-browser.desktop /config/Desktop/fcitx5-config.desktop
 
 # Create KDE autostart entries
 RUN mkdir -p /config/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && chromium --no-sandbox http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && /usr/bin/google-chrome-stable --no-sandbox http://localhost:8648 || chromium --no-sandbox http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-webui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && chromium --no-sandbox /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && /usr/bin/google-chrome-stable --no-sandbox /opt/welcome.html || chromium --no-sandbox /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /config/hermes-data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /config/.config/autostart/hermes-terminal.desktop && \
