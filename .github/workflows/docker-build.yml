@@ -40,8 +40,8 @@ jobs:
         run: |
           HERMES_AGENT=$(git ls-remote https://github.com/NousResearch/hermes-agent.git HEAD | cut -f1)
           HERMES_WEBUI=$(git ls-remote https://github.com/EKKOLearnAI/hermes-web-ui.git HEAD | cut -f1)
-          # linuxserver/baseimage-kasmvnc is the base image (KasmVNC, cloud-friendly)
-          BASE_IMAGE=$(docker manifest inspect ghcr.io/linuxserver/baseimage-kasmvnc:debianbookworm 2>/dev/null \
+          # openclaw_computer is the base image (KDE + supervisord + TigerVNC + noVNC)
+          BASE_IMAGE=$(docker manifest inspect ghcr.io/tunmax/openclaw_computer:latest 2>/dev/null \
                        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('config',{}).get('digest','unknown'))" \
                        || echo "unknown")
           echo "hermes_agent=${HERMES_AGENT}" >> $GITHUB_OUTPUT
@@ -50,7 +50,7 @@ jobs:
           echo "Combined upstream state:"
           echo "  hermes-agent   : ${HERMES_AGENT}"
           echo "  hermes-webui   : ${HERMES_WEBUI}"
-          echo "  base image     : ${BASE_IMAGE} (linuxserver/baseimage-kasmvnc:debianbookworm)"
+          echo "  base image     : ${BASE_IMAGE} (tunmax/openclaw_computer:latest)"
 
       - name: Load previous upstream hashes
         id: load-cache
@@ -84,7 +84,7 @@ jobs:
             CHANGED="true"
           fi
           if [ "${{ steps.fetch.outputs.base_image }}" != "${{ steps.load-cache.outputs.prev_base_image }}" ]; then
-            echo "Base image (linuxserver/baseimage-kasmvnc:debianbookworm) has been updated"
+            echo "Base image (tunmax/openclaw_computer:latest) has been updated"
             CHANGED="true"
           fi
           echo "changed=${CHANGED}" >> $GITHUB_OUTPUT
@@ -157,7 +157,7 @@ jobs:
       - name: Test image starts
         run: |
           docker run --rm -d --name test-hermes \
-            -v /tmp/hermes-test:/config \
+            -p 7860:7860 \
             ghcr.io/comedy1024/hermes-agent-desktop:test || true
           sleep 10
           docker logs test-hermes || true

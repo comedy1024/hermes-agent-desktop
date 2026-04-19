@@ -3,11 +3,8 @@
 
 FROM ghcr.io/comedy1024/hermes-agent-desktop:latest
 
-# 设置 KasmVNC 使用 7860 端口（ModelScope 要求）
-ENV CUSTOM_PORT=7860
-
-# 设置桌面分辨率（云平台推荐较小分辨率以减少资源消耗）
+# 桌面分辨率（云平台推荐较小分辨率以减少资源消耗）
 ENV RESOLUTION=1024x768
 
 # 不需要 COPY、RUN 或 ENTRYPOINT
-# 基础镜像的 /init 会自动启动 KasmVNC + KDE + Hermes
+# 基础镜像的 /entrypoint.sh 会自动启动 VNC + KDE + Hermes

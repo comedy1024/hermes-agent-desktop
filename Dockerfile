@@ -1,36 +1,32 @@
 # ================================================================
-# hermes-agent-desktop: Linux GUI Desktop + Hermes Agent + Hermes WebUI
-# Based on: ghcr.io/linuxserver/baseimage-kasmvnc:debianbookworm (KasmVNC)
+# hermes-agent-desktop: Hermes Agent + WebUI on Linux KDE Desktop
+# Based on: ghcr.io/tunmax/openclaw_computer:latest
 # ================================================================
 #
-# Why KasmVNC over Selkies:
-#   - Cloud platforms (ModelScope/HuggingFace) only expose a single HTTP port
-#   - KasmVNC uses WebSocket VNC — works perfectly behind HTTP reverse proxy
-#   - Selkies uses WebRTC — requires independent media streams that cannot
-#     penetrate HTTP-only reverse proxies
-#   - KasmVNC's built-in Nginx handles HTTP→WebSocket upgrade automatically
+# Why openclaw_computer as base:
+#   - Proven to work on ModelScope/HuggingFace (same cloud platforms we target)
+#   - Debian 12 + KDE + supervisord + TigerVNC + noVNC + websockify
+#   - Runs desktop as root (avoids the abc user permission hell we hit with
+#     baseimage-kasmvnc: /config not writable, /defaults/ permission denied,
+#     XDG_RUNTIME_DIR UID mismatch, KDE "No write access to $HOME", etc.)
+#   - Pre-installed: Chrome, fcitx5 Chinese input, zsh
+#   - Port 7860 exposed, auto-connect noVNC
 #
-# Why baseimage-kasmvnc over webtop:
-#   - webtop switched to Selkies in June 2025, no KasmVNC variant exists
-#   - baseimage-kasmvnc is the official LinuxServer KasmVNC base image
-#   - Same s6-overlay init system, same /config persistence model
-#   - We install KDE Plasma ourselves (baseimage-kasmvnc ships with Openbox)
+# Previous baseimage-kasmvnc approach failed because:
+#   - Cloud platform overlayFS blocks non-root users from accessing system dirs
+#   - abc user (UID=911) couldn't read /defaults/startwm.sh despite 755 perms
+#   - KDE refuses to start when HOME (/config) is not writable by the user
+#   - chown/chmod on overlayFS doesn't always take effect
+#   - After 6+ iterations of permission fixes, the root cause was always the
+#     cloud platform's filesystem restrictions on non-root users
 #
-# Python strategy:
-#   Debian 12 Bookworm ships Python 3.11 — compatible with hermes-agent.
-#   We create a venv at /opt/hermes-venv using system Python.
-#
-# WebUI: EKKOLearnAI/hermes-web-ui
-#   - Vue 3 + TypeScript + Vite + Naive UI (rich UI)
-#   - Koa 2 BFF (Node.js) → proxies to Hermes Gateway API
-#   - Features: Web terminal, platform channels, usage analytics, cron jobs
-#   - Deployed via: git clone + npm install + npm run build
-#   - Runs: node dist/server/index.js (port 8648 → proxies to 8642)
+# Architecture:
+#   TigerVNC (:1/5901) → websockify+noVNC (7860) → browser
+#   supervisord manages: TigerVNC, noVNC, KDE, hermes-gateway, hermes-webui
+#   Everything runs as root (proven approach for cloud platforms)
 #
 # Ports:
-#   3000 - KasmVNC desktop (HTTP, default, set CUSTOM_PORT=7860 for cloud) [s6-overlay mode]
-#   3001 - KasmVNC desktop (HTTPS) [s6-overlay mode]
-#   7860 - noVNC desktop (HTTP, cloud mode — TigerVNC + websockify) [cloud mode]
+#   7860 - noVNC desktop (HTTP, cloud mode)
 #   8648 - Hermes WebUI (BFF server)
 #   8642 - Hermes Agent Gateway API
 
@@ -53,88 +49,29 @@ RUN git clone https://github.com/EKKOLearnAI/hermes-web-ui.git . && \
     rm -rf /root/.cache /root/.npm
 
 # ---- Stage 2: Final image ----
-# Official LinuxServer.io KasmVNC base image (WebSocket VNC, cloud-friendly)
-# https://docs.linuxserver.io/images/docker-baseimage-kasmvnc/
-FROM ghcr.io/linuxserver/baseimage-kasmvnc:debianbookworm
+# Based on openclaw_computer — proven KDE desktop for cloud platforms
+FROM ghcr.io/tunmax/openclaw_computer:latest
 
 LABEL org.opencontainers.image.source=https://github.com/comedy1024/hermes-agent-desktop
-LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux GUI Desktop (KasmVNC)"
+LABEL org.opencontainers.image.description="Hermes Agent + Hermes WebUI in Linux KDE Desktop (openclaw_computer base)"
 LABEL org.opencontainers.image.licenses=MIT
 
-# Install system dependencies + KDE Plasma desktop + VNC stack + input method + browser
-# Debian 12 Bookworm: Python 3.11, cmake 3.25 — all compatible with hermes-agent
-#
-# VNC stack (for cloud mode — ModelScope/HuggingFace):
-#   - tigervnc-standalone-server: TigerVNC (Xtigervnc) — lightweight X+VNC server
-#   - novnc: HTML5 VNC client — browser-based remote desktop
-#   - websockify: WebSocket→TCP proxy — bridges noVNC to TigerVNC
-#   Architecture: TigerVNC(:1/5901) → websockify+noVNC(7860) → browser
-#   This is the proven approach used by openclaw_computer on ModelScope.
-#
-# Missing KDE/Qt dependencies (fixes QML module errors):
-#   - kwin-x11: window manager (kde-plasma-desktop doesn't pull it in on Debian 12)
-#   - plasma-workspace: complete plasma workspace (fixes activity manager, etc.)
-#     NOTE: Debian Bookworm package is "plasma-workspace", NOT "kde-plasma-workspace"
-#   - Various QML modules for system tray, notifications, kickoff menu, etc.
-#   - kactivitymanagerd: activity manager daemon (fixes "Aborting shell load")
-#   - plasma-pa: PulseAudio volume control (fixes "org.kde.plasma.private.volume" missing)
-#
-# KEY INSIGHT: kde-plasma-desktop is a metapackage that doesn't pull in everything.
-# We need plasma-workspace + kde-standard + specific QML modules for a stable desktop.
-# Without kwin-x11 → no window manager → can't close/move windows, menus freeze.
-# Without kactivitymanagerd → plasma shell aborts on load.
-USER root
+# Install Python venv + build tools for hermes-agent
+# openclaw_computer base already has: Python 3, Node.js, Chrome, fcitx5, KDE
+# We only need to add: Python dev headers, cmake, libolm for whatsapp bridge,
+# and uv for fast pip resolution (pip's resolver fails on hermes-agent[all])
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-dev python3-venv \
     build-essential gcc cmake \
-    python3 python3-pip python3-venv python3-dev \
     libffi-dev libolm-dev \
-    ripgrep ffmpeg procps curl git \
-    kde-plasma-desktop plasma-workspace kwin-x11 konsole kwrite dolphin \
-    kactivitymanagerd \
-    plasma-pa \
-    qml-module-org-kde-kitemmodels \
-    qml-module-qt-labs-platform \
-    qml-module-qtquick-shapes \
-    qml-module-qtquick-layouts \
-    qml-module-qtquick-controls2 \
-    qml-module-qtquick-templates2 \
-    qml-module-qtgraphicaleffects \
-    plasma-widgets-addons \
-    kde-standard \
-    fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 fcitx5-frontend-qt5 fcitx5-config-qt \
-    tigervnc-standalone-server novnc websockify \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Google Chrome (primary browser, best compatibility)
-# Using Google's official .deb package. On arm64, falls back to Chromium.
-# Google Chrome is preferred over Chromium for better web compatibility,
-# especially with Hermes WebUI and modern web applications.
-RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
-        apt-get update && \
-        apt-get install -y --no-install-recommends wget ca-certificates && \
-        wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-        apt-get install -y --no-install-recommends /tmp/chrome.deb || \
-        apt-get install -f -y && \
-        rm -f /tmp/chrome.deb && \
-        rm -rf /var/lib/apt/lists/*; \
-    else \
-        apt-get update && \
-        apt-get install -y --no-install-recommends chromium && \
-        rm -rf /var/lib/apt/lists/*; \
-    fi
-
-# Install Node.js 22 + npm via NodeSource
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
+    curl git procps ffmpeg ripgrep && \
     rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast Python package management
 # pip's resolver fails with "resolution-too-deep" on hermes-agent[all]'s complex
 # dependency graph. uv's resolver handles it efficiently (same as official Dockerfile).
-# NOTE: baseimage-kasmvnc sets HOME=/config, so uv installs to /config/.local/bin
-ENV HOME="/config"
 RUN curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh
-ENV PATH="/config/.local/bin:$PATH"
+ENV PATH="/root/.local/bin:$PATH"
 
 # ---- Clone and install Hermes Agent ----
 # Debian 12's Python 3.11 is compatible with hermes-agent.
@@ -154,9 +91,9 @@ RUN python3 -m venv /opt/hermes-venv && \
 ENV PATH="/opt/hermes-venv/bin:$PATH"
 
 # Set up Hermes environment
-ENV HERMES_HOME=/config/hermes-data
+ENV HERMES_HOME=/root/hermes-data
 ENV PYTHONUNBUFFERED=1
-RUN mkdir -p /config/hermes-data
+RUN mkdir -p /root/hermes-data
 
 # Copy Hermes WebUI from builder stage
 COPY --from=webui-builder /build /opt/hermes-webui
@@ -168,91 +105,23 @@ COPY --from=webui-builder /build /opt/hermes-webui
 ENV PORT=8648
 ENV UPSTREAM=http://127.0.0.1:8642
 ENV HERMES_BIN=/opt/hermes-venv/bin/hermes
-ENV HERMES_HOME=/config/hermes-data
+ENV HERMES_HOME=/root/hermes-data
 ENV NODE_ENV=production
 
-# ---- Copy desktop environment startup script ----
-# This replaces the default Openbox with KDE Plasma
-# NOTE: COPY root/ / copies root/defaults/startwm.sh → /defaults/startwm.sh
-# (baseimage-kasmvnc expects startwm.sh at /defaults/startwm.sh)
-COPY root/ /
-# CRITICAL: Fix permissions for all scripts copied from Windows host
-# COPY doesn't preserve execute permissions, and /defaults/ dir may be restricted
-RUN chmod -R 755 /defaults/ && \
-    sed -i 's/\r$//' /defaults/startwm.sh
+# ---- Copy custom configuration ----
+# Hermes entrypoint script (bootstrap + start services)
+# We don't rely on supervisord conf.d (may not be included in base image's
+# supervisord.conf). Instead, hermes-wrapper.sh starts Hermes services
+# directly in the background before delegating to the original entrypoint.
+COPY hermes-entrypoint.sh /opt/hermes-entrypoint.sh
+RUN chmod +x /opt/hermes-entrypoint.sh && sed -i 's/\r$//' /opt/hermes-entrypoint.sh
 
-# ---- Disable KDE lock screen and power management ----
-# VNC desktops should never lock or sleep — there's no physical screen to unlock
-RUN mkdir -p /config/.config && \
-    printf '[Daemon]\nAutolock=false\nLockOnResume=false\nTimeout=0\n' \
-        > /config/.config/kscreenlockerrc && \
-    printf '[Daemon]\nAutolock=false\nLockOnResume=false\nTimeout=0\n' \
-        > /etc/xdg/kscreenlockerrc && \
-    mkdir -p /etc/xdg && \
-    printf '[Wallpapers]\ndefaultWallpaper=hermes-agent-desktop\n' > /etc/xdg/plasmarc
-
-# ---- Install Hermes WebUI as a supervised service ----
-# webtop uses s6-overlay for init; we add it to /custom-cont-init.d/ so it starts on each boot
-COPY hermes-webui-service.sh /opt/hermes-webui-service.sh
-RUN chmod +x /opt/hermes-webui-service.sh
-
-# Register hermes-webui as a background service via custom-cont-init.d
-RUN mkdir -p /custom-cont-init.d && \
-    printf '#!/bin/bash\n# Start Hermes WebUI in background\nnohup /opt/hermes-webui-service.sh > /config/logs/hermes-webui.log 2>&1 &\n' \
-    > /custom-cont-init.d/10-hermes-webui.sh && \
-    chmod +x /custom-cont-init.d/10-hermes-webui.sh
-
-# ---- s6-overlay PID 1 compatibility wrapper ----
-# Cloud platforms (ModelScope Spaces, HuggingFace Spaces) bypass Docker ENTRYPOINT
-# and directly run: /bin/sh -c /init
-# This prevents s6-overlay from becoming PID 1, causing fatal error.
-#
-# Fix: Replace /init with our wrapper that:
-#   1. Detects if running as PID 1 (normal Docker) -> exec original s6-overlay
-#   2. If not PID 1, tries unshare --pid (requires CAP_SYS_ADMIN)
-#   3. If unshare fails (restricted env), falls back to manual service startup
-#
-# NOTE: With KasmVNC, the cloud fallback is MUCH simpler — KasmVNC's built-in
-# Nginx handles HTTP→WebSocket upgrade natively. No custom Nginx config needed.
-COPY entrypoint-cloud.sh /entrypoint-cloud.sh
-RUN sed -i 's/\r$//' /entrypoint-cloud.sh && chmod +x /entrypoint-cloud.sh
-
-# ---- s6-overlay PID 1 compatibility wrapper ----
-# We write the wrapper script into /init directly in a single RUN layer.
-# This avoids COPY + mv issues where Docker layers may not properly replace /init.
-#
-# Strategy: save original s6-overlay /init as /init.s6, then write
-# our POSIX sh wrapper to /init. The wrapper detects PID 1 and either
-# exec's the original s6-overlay or falls back to cloud-init mode.
-#
-# Copy s6-init wrapper and install it as /init.
-# CRITICAL: We must strip Windows CRLF (\r) from the script file,
-# because Git on Windows may check out files with \r\n line endings.
-# If /init has #!/bin/sh\r, the kernel looks for /bin/sh\r as the
-# interpreter, which doesn't exist → "/init: not found" (exit 127).
-RUN mv /init /init.s6 && chmod +x /init.s6
-
-COPY s6-init.sh /init
-RUN sed -i 's/\r$//' /init && \
-    chmod +x /init && \
-    echo "=== /init installed ===" && \
-    ls -la /init /init.s6 && \
-    head -3 /init && \
-    echo "=== /init.s6 type ===" && \
-    file /init.s6
-
-# Copy our welcome page and wallpaper
+# Copy welcome page and wallpaper
 COPY welcome.html /opt/welcome.html
 COPY wallpaper.png /opt/hermes-wallpaper.png
 
 # ---- Install wallpaper ----
-# Strategy: install to MULTIPLE locations so it works regardless of KDE config state:
-#   a) Replace the default KDE "Next" theme images (guaranteed to show)
-#   b) Install as named wallpaper package for manual selection
-#   c) Set system-level default via /etc/xdg/plasmarc
 RUN WALLPAPER=/opt/hermes-wallpaper.png && \
-    \
-    # Location a: replace every image in the KDE default "Next" wallpaper theme
     if [ -d /usr/share/wallpapers/Next ]; then \
         find /usr/share/wallpapers/Next/contents/images -type f \
             \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' \) | \
@@ -260,8 +129,6 @@ RUN WALLPAPER=/opt/hermes-wallpaper.png && \
     fi && \
     mkdir -p /usr/share/wallpapers/Next/contents/images && \
     cp "$WALLPAPER" /usr/share/wallpapers/Next/contents/images/1920x1080.png && \
-    \
-    # Location b: named wallpaper package (KDE 5/6 compatible)
     mkdir -p /usr/share/wallpapers/hermes-agent-desktop/contents/images && \
     cp "$WALLPAPER" /usr/share/wallpapers/hermes-agent-desktop/contents/images/1920x1080.png && \
     cp "$WALLPAPER" /usr/share/wallpapers/hermes-agent-desktop/contents/images/1280x800.png && \
@@ -269,122 +136,43 @@ RUN WALLPAPER=/opt/hermes-wallpaper.png && \
         > /usr/share/wallpapers/hermes-agent-desktop/metadata.desktop && \
     printf '{"KPlugin":{"Authors":[{"Name":"comedy1024"}],"Id":"hermes-agent-desktop","Name":"Hermes Agent Desktop","License":"MIT","Version":"1.0"}}\n' \
         > /usr/share/wallpapers/hermes-agent-desktop/metadata.json && \
-    \
-    # Location c: system-level KDE default wallpaper config
-    mkdir -p /etc/xdg && \
-    printf '[Wallpapers]\ndefaultWallpaper=hermes-agent-desktop\n' > /etc/xdg/plasmarc && \
-    \
     echo "[wallpaper] Installed to all KDE wallpaper locations"
 
-# ---- Runtime wallpaper + init script ----
-# Called by custom-cont-init.d at every boot to apply wallpaper to live KDE session
-RUN printf '#!/bin/bash\n\
-# Apply Hermes wallpaper to KDE Plasma at runtime.\n\
-WALLPAPER_PATH="file:///usr/share/wallpapers/hermes-agent-desktop/contents/images/1920x1080.png"\n\
-PLASMA_RC="/config/.config/plasma-org.kde.plasma.desktop-appletsrc"\n\
-\n\
-# Method 1: patch appletsrc if it exists\n\
-if [ -f "$PLASMA_RC" ]; then\n\
-    sed -i "s|^Image=.*|Image=${WALLPAPER_PATH}|g" "$PLASMA_RC"\n\
-    sed -i "s|^wallpaperplugin=.*|wallpaperplugin=org.kde.image|g" "$PLASMA_RC"\n\
-    echo "[wallpaper] appletsrc patched"\n\
-fi\n\
-\n\
-# Method 2: plasma-apply-wallpaperimage (Plasma 5.23+)\n\
-if command -v plasma-apply-wallpaperimage >/dev/null 2>&1; then\n\
-    DISPLAY=:1 plasma-apply-wallpaperimage \\\n\
-        /usr/share/wallpapers/hermes-agent-desktop/contents/images/1920x1080.png \\\n\
-        2>/dev/null && echo "[wallpaper] plasma-apply-wallpaperimage done" || true\n\
-fi\n\
-\n\
-# Method 3: kwriteconfig5\n\
-if command -v kwriteconfig5 >/dev/null 2>&1; then\n\
-    kwriteconfig5 --file plasmarc \\\n\
-        --group "Wallpapers" --key "defaultWallpaper" "hermes-agent-desktop" 2>/dev/null || true\n\
-fi\n\
-\n\
-echo "[wallpaper] Apply complete"\n\
-' > /opt/apply-wallpaper.sh && chmod +x /opt/apply-wallpaper.sh
-
-# Register wallpaper apply as boot init
-RUN printf '#!/bin/bash\n/opt/apply-wallpaper.sh\n' \
-    > /custom-cont-init.d/05-apply-wallpaper.sh && \
-    chmod +x /custom-cont-init.d/05-apply-wallpaper.sh
-
 # Create Hermes desktop shortcuts
-RUN mkdir -p /config/Desktop && \
+RUN mkdir -p /root/Desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8648\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
-        > /config/Desktop/hermes-webui.desktop && \
+        > /root/Desktop/hermes-webui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' \
-        > /config/Desktop/hermes-welcome.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /config/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
-        > /config/Desktop/hermes-terminal.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Web Browser\nComment=Web Browser\nExec=/usr/bin/google-chrome-stable --no-sandbox --disable-dev-shm-usage --disable-gpu %u || chromium --no-sandbox --disable-dev-shm-usage --disable-gpu %u\nIcon=google-chrome\nTerminal=false\nCategories=Network;WebBrowser;\n' \
-        > /config/Desktop/web-browser.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=输入法配置\nComment=Fcitx5 Input Method\nExec=fcitx5-configtool\nIcon=fcitx\nTerminal=false\nCategories=Settings;\n' \
-        > /config/Desktop/fcitx5-config.desktop && \
-    chmod +x /config/Desktop/hermes-*.desktop /config/Desktop/web-browser.desktop /config/Desktop/fcitx5-config.desktop
+        > /root/Desktop/hermes-welcome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /root/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
+        > /root/Desktop/hermes-terminal.desktop && \
+    chmod +x /root/Desktop/hermes-*.desktop
 
 # Create KDE autostart entries
-RUN mkdir -p /config/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && /usr/bin/google-chrome-stable --no-sandbox --disable-dev-shm-usage --disable-gpu http://localhost:8648 || chromium --no-sandbox --disable-dev-shm-usage --disable-gpu http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
-        > /config/.config/autostart/hermes-webui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Open Welcome Guide\nExec=bash -c "sleep 3 && /usr/bin/google-chrome-stable --no-sandbox --disable-dev-shm-usage --disable-gpu /opt/welcome.html || chromium --no-sandbox --disable-dev-shm-usage --disable-gpu /opt/welcome.html"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
-        > /config/.config/autostart/hermes-welcome.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /config/hermes-data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
-        > /config/.config/autostart/hermes-terminal.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Fcitx5 Input Method\nExec=fcitx5 -d --replace\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
-        > /config/.config/autostart/fcitx5.desktop
-
-# ---- Bootstrap init script ----
-# Runs once at first boot to initialize Hermes Agent config files
-RUN printf '#!/bin/bash\n\
-# Bootstrap Hermes Agent config (runs once at first boot)\n\
-HERMES_HOME="/config/hermes-data"\n\
-HERMES_INSTALL="/opt/hermes"\n\
-mkdir -p "$HERMES_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}\n\
-mkdir -p "$HERMES_HOME/.hermes/webui-mvp"\n\
-mkdir -p /config/logs\n\
-\n\
-if [ ! -f "$HERMES_HOME/.env" ] && [ -f "$HERMES_INSTALL/.env.example" ]; then\n\
-    cp "$HERMES_INSTALL/.env.example" "$HERMES_HOME/.env"\n\
-    echo "[hermes] Created .env from template"\n\
-fi\n\
-\n\
-if [ ! -f "$HERMES_HOME/config.yaml" ] && [ -f "$HERMES_INSTALL/cli-config.yaml.example" ]; then\n\
-    cp "$HERMES_INSTALL/cli-config.yaml.example" "$HERMES_HOME/config.yaml"\n\
-    echo "[hermes] Created config.yaml from template"\n\
-fi\n\
-\n\
-if [ ! -f "$HERMES_HOME/SOUL.md" ] && [ -f "$HERMES_INSTALL/docker/SOUL.md" ]; then\n\
-    cp "$HERMES_INSTALL/docker/SOUL.md" "$HERMES_HOME/SOUL.md"\n\
-    echo "[hermes] Created SOUL.md from template"\n\
-fi\n\
-\n\
-if [ -d "$HERMES_INSTALL/skills" ] && [ -f "$HERMES_INSTALL/tools/skills_sync.py" ]; then\n\
-    /opt/hermes-venv/bin/python "$HERMES_INSTALL/tools/skills_sync.py" 2>/dev/null || true\n\
-fi\n\
-\n\
-echo "[hermes] Bootstrap complete"\n\
-' > /custom-cont-init.d/20-hermes-bootstrap.sh && \
-    chmod +x /custom-cont-init.d/20-hermes-bootstrap.sh
+RUN mkdir -p /root/.config/autostart && \
+    printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && xdg-open http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+        > /root/.config/autostart/hermes-webui.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /root/hermes-data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
+        > /root/.config/autostart/hermes-terminal.desktop
 
 # Expose ports
-# 3000   - KasmVNC desktop (HTTP, set CUSTOM_PORT=7860 for ModelScope/HuggingFace)
-# 3001   - KasmVNC desktop (HTTPS)
-# 8648   - Hermes WebUI (BFF server)
-# 8642   - Hermes Agent Gateway API
-EXPOSE 3000 3001 8648 8642
+# 7860 - noVNC desktop (HTTP, cloud mode — already exposed by base image)
+# 8648 - Hermes WebUI (BFF server)
+# 8642 - Hermes Agent Gateway API
+EXPOSE 7860 8648 8642
 
-# Data volume — baseimage-kasmvnc uses /config for all persistent data
-VOLUME ["/config"]
-
-# Health check — check KasmVNC on 3000 or WebUI on 8648
+# Health check — check noVNC on 7860 or WebUI on 8648
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -sf http://localhost:3000/ > /dev/null || curl -sf http://localhost:8648/ > /dev/null || exit 1
+    CMD curl -sf http://localhost:7860/ > /dev/null || curl -sf http://localhost:8648/ > /dev/null || exit 1
 
-# Entrypoint: /init is now our PID 1 wrapper (same path as original s6-overlay init)
-# - Normal Docker: detects PID 1, exec's /init.s6 directly (zero overhead)
-# - Cloud platforms: detects non-PID-1, falls back to cloud-init mode
-#   (KasmVNC's built-in Nginx handles HTTP→WebSocket upgrade natively)
-ENTRYPOINT ["/init"]
+# Entrypoint: wrap openclaw_computer's /entrypoint.sh
+# We rename the original to /entrypoint-openclaw.sh and install our wrapper
+# which runs Hermes bootstrap first, then delegates to the original.
+# Hermes services are started by hermes-wrapper.sh as background processes
+# with auto-restart loops, then the original entrypoint starts supervisord.
+RUN mv /entrypoint.sh /entrypoint-openclaw.sh
+
+COPY hermes-wrapper.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && sed -i 's/\r$//' /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
