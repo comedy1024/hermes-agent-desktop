@@ -176,6 +176,8 @@ ENV NODE_ENV=production
 # NOTE: COPY root/ / copies root/defaults/startwm.sh → /defaults/startwm.sh
 # (baseimage-kasmvnc expects startwm.sh at /defaults/startwm.sh)
 COPY root/ /
+RUN chmod +x /defaults/startwm.sh && \
+    sed -i 's/\r$//' /defaults/startwm.sh
 
 # ---- Disable KDE lock screen and power management ----
 # VNC desktops should never lock or sleep — there's no physical screen to unlock
