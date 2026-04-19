@@ -10,8 +10,9 @@
 #   → websockify + noVNC on port 7860
 #   → browser accesses desktop via HTTP
 #
-# This is the classic, reliable VNC-to-web bridge that works
-# behind any HTTP reverse proxy (ModelScope, HuggingFace, etc.)
+# KEY DESIGN: Desktop components (KDE, fcitx5) run as user 'abc'
+# to avoid XDG_RUNTIME_DIR UID mismatch errors.
+# Only websockify and hermes services run as root.
 # ================================================================
 
 echo "=========================================="
@@ -22,12 +23,13 @@ echo "[entrypoint-cloud] Starting at $(date)"
 # ---- Environment setup ----
 export HOME=/config
 export USER=abc
-export PUID=${PUID:-1000}
+export PUID=${PUID:-911}
 export PGID=${PGID:-1000}
 export DISPLAY=${DISPLAY:-:1}
 export XDG_RUNTIME_DIR=/run/user/${PUID}
 export XDG_CONFIG_HOME=/config/.config
 export XDG_CACHE_HOME=/config/.cache
+export XDG_DATA_HOME=/config/.local/share
 
 # Cloud port — default 7860 for ModelScope/HuggingFace
 CLOUD_PORT=${CLOUD_PORT:-7860}
@@ -41,18 +43,14 @@ export SDL_IM_MODULE=fcitx
 # VNC port (internal, not exposed externally)
 VNC_PORT=5901
 
-# Display number derived from DISPLAY
-DISPLAY_NUM=$(echo "$DISPLAY" | sed 's/://')
-
 # Resolution — 1280x720 is comfortable for cloud platforms
-# (1920x1080 is too large, requires scrolling)
 RESOLUTION=${RESOLUTION:-1280x720}
 
 echo "[entrypoint-cloud] Config: DISPLAY=${DISPLAY} VNC_PORT=${VNC_PORT} CLOUD_PORT=${CLOUD_PORT} RESOLUTION=${RESOLUTION}"
 
 # ---- Ensure required directories exist ----
 mkdir -p /config/logs /config/hermes-data /config/.cache /config/.config
-mkdir -p /config/.vnc /run /tmp/.X11-unix
+mkdir -p /config/.vnc /config/.local/share /run /tmp/.X11-unix
 chmod 1777 /tmp/.X11-unix
 
 # Clean up stale X11/VNC state (critical for container restarts)
@@ -61,20 +59,26 @@ pkill -9 -f "Xtigervnc" 2>/dev/null || true
 pkill -9 -f "Xvnc" 2>/dev/null || true
 pkill -9 -f "websockify" 2>/dev/null || true
 
-# Fix permissions
-chown -R abc:abc /config/.cache /config/.config /config/.vnc 2>/dev/null || true
+# ---- Fix UID/GID and permissions ----
+# Ensure abc user has correct UID (baseimage-kasmvnc default is 911)
+if id abc >/dev/null 2>&1; then
+    echo "[entrypoint-cloud] User abc exists (UID=$(id -u abc))"
+else
+    echo "[entrypoint-cloud] Creating user abc (UID=${PUID})"
+    useradd -u ${PUID} -m -s /bin/bash abc 2>/dev/null || true
+fi
+
+# Fix XDG_RUNTIME_DIR ownership (critical — prevents "not owned by UID" errors)
 mkdir -p /run/user/${PUID}
-chown abc:abc /run/user/${PUID} 2>/dev/null || true
+chown abc:abc /run/user/${PUID}
+chmod 700 /run/user/${PUID}
+
+# Fix config directory ownership
+chown -R abc:abc /config/.cache /config/.config /config/.vnc /config/.local 2>/dev/null || true
 
 # Fix Fontconfig cache
 mkdir -p /config/.cache/fontconfig
 chown -R abc:abc /config/.cache/fontconfig 2>/dev/null || true
-
-# Set up user UID/GID
-if [ -n "$PUID" ] && [ -n "$PGID" ]; then
-    groupmod -o -g "$PGID" abc 2>/dev/null || true
-    usermod -o -u "$PUID" abc 2>/dev/null || true
-fi
 
 # ---- Run custom init scripts ----
 if [ -d /custom-cont-init.d ]; then
@@ -108,17 +112,12 @@ if command -v pulseaudio >/dev/null 2>&1; then
 fi
 
 # ================================================================
-# Start TigerVNC — following openclaw_computer's proven approach
+# Start TigerVNC — as root (needs to bind port and create display)
 # ================================================================
 echo "[entrypoint-cloud] Starting TigerVNC on ${DISPLAY} (${RESOLUTION})..."
 
-# Verify TigerVNC binary exists
 if [ ! -x /usr/bin/Xtigervnc ]; then
     echo "[entrypoint-cloud] ERROR: /usr/bin/Xtigervnc not found!"
-    echo "[entrypoint-cloud] TigerVNC must be installed in Dockerfile:"
-    echo "[entrypoint-cloud]   apt-get install tigervnc-standalone-server"
-    echo "[entrypoint-cloud] Available X binaries:"
-    ls -la /usr/bin/X* 2>/dev/null || echo "  (none)"
     exit 1
 fi
 
@@ -127,10 +126,6 @@ mkdir -p /config/.vnc
 chown abc:abc /config/.vnc 2>/dev/null || true
 
 # Start TigerVNC server
-# -SecurityTypes None = no password required (websockify provides the access point)
-# -AlwaysShared = allow multiple connections
-# -geometry = virtual screen resolution
-# This creates a virtual X display on :1 with VNC on port 5901
 /usr/bin/Xtigervnc "${DISPLAY}" \
     -geometry "${RESOLUTION}" \
     -depth 24 \
@@ -157,47 +152,49 @@ while ! ss -tlnp 2>/dev/null | grep -q ":${VNC_PORT} "; do
         exit 1
     fi
     if [ $((RETRIES % 5)) -eq 0 ]; then
-        echo "[entrypoint-cloud] Still waiting... (attempt $RETRIES/30, alive: $(kill -0 $VNC_PID 2>/dev/null && echo 'yes' || echo 'no'))"
+        echo "[entrypoint-cloud] Still waiting... (attempt $RETRIES/30)"
     fi
 done
 echo "[entrypoint-cloud] VNC server is ready on port ${VNC_PORT}."
 
-# ---- Start Desktop Environment (KDE) ----
-echo "[entrypoint-cloud] Starting KDE Plasma..."
+# ================================================================
+# Start Desktop Environment (KDE) — as user 'abc'
+# ================================================================
+# This is CRITICAL: KDE must run as the same user that owns
+# XDG_RUNTIME_DIR (/run/user/911). Running as root causes:
+#   - "runtime directory not owned by UID 0" errors
+#   - kwin_x11 crash (window manager)
+#   - No window decorations / can't close windows
+#   - Activity manager not running
+#   - D-Bus signal failures
+# ================================================================
+echo "[entrypoint-cloud] Starting KDE Plasma as user abc..."
+
+# Ensure ICEauthority and Xauthority exist for abc
+touch /config/.ICEauthority /config/.Xauthority 2>/dev/null || true
+chown abc:abc /config/.ICEauthority /config/.Xauthority 2>/dev/null || true
+
 if [ -f /defaults/startwm.sh ]; then
-    cd /config
-    DISPLAY="${DISPLAY}" /bin/bash /defaults/startwm.sh &
+    su - abc -c "export DISPLAY=${DISPLAY} HOME=/config USER=abc XDG_RUNTIME_DIR=/run/user/${PUID} XDG_CONFIG_HOME=/config/.config GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx; /bin/bash /defaults/startwm.sh" &
     DE_PID=$!
 else
-    echo "[entrypoint-cloud] WARNING: startwm.sh not found, trying startplasma-x11 directly"
-    DISPLAY="${DISPLAY}" startplasma-x11 &
+    su - abc -c "export DISPLAY=${DISPLAY} HOME=/config USER=abc XDG_RUNTIME_DIR=/run/user/${PUID}; startplasma-x11" &
     DE_PID=$!
 fi
 sleep 2
-
-# Start fcitx5 input method
-if command -v fcitx5 >/dev/null 2>&1; then
-    echo "[entrypoint-cloud] Starting fcitx5 input method..."
-    DISPLAY="${DISPLAY}" fcitx5 -d --replace 2>/dev/null || true
-fi
 
 # ================================================================
 # Start noVNC + websockify — bridges VNC to WebSocket/HTTP
 # ================================================================
 echo "[entrypoint-cloud] Starting noVNC on port ${CLOUD_PORT}..."
 
-# Find noVNC web root
 NOVNC_WEB=""
 if [ -d /usr/share/novnc ]; then
     NOVNC_WEB=/usr/share/novnc
 elif [ -d /opt/novnc ]; then
     NOVNC_WEB=/opt/novnc
-else
-    echo "[entrypoint-cloud] WARNING: noVNC web root not found"
-    echo "[entrypoint-cloud] Searched: /usr/share/novnc, /opt/novnc"
 fi
 
-# Find websockify binary
 WEBSOCKIFY_BIN=""
 if [ -x /usr/bin/websockify ]; then
     WEBSOCKIFY_BIN=/usr/bin/websockify
@@ -207,7 +204,6 @@ fi
 
 if [ -z "$WEBSOCKIFY_BIN" ]; then
     echo "[entrypoint-cloud] ERROR: websockify not found!"
-    echo "[entrypoint-cloud] Install with: apt-get install websockify"
     exit 1
 fi
 
@@ -215,7 +211,6 @@ echo "[entrypoint-cloud] Using websockify: ${WEBSOCKIFY_BIN}"
 if [ -n "$NOVNC_WEB" ]; then
     echo "[entrypoint-cloud] noVNC web root: ${NOVNC_WEB}"
     # Create index.html that auto-redirects to vnc.html
-    # (default noVNC page shows a file listing, not the VNC client)
     if [ ! -f "${NOVNC_WEB}/index.html" ] || ! grep -q "vnc.html" "${NOVNC_WEB}/index.html" 2>/dev/null; then
         cat > "${NOVNC_WEB}/index.html" << 'NOVNC_INDEX_EOF'
 <!DOCTYPE html>
@@ -253,7 +248,6 @@ while ! ss -tlnp 2>/dev/null | grep -q ":${CLOUD_PORT} "; do
     RETRIES=$((RETRIES + 1))
     if [ $RETRIES -gt 15 ]; then
         echo "[entrypoint-cloud] ERROR: noVNC failed to start!"
-        echo "[entrypoint-cloud] noVNC log (last 20 lines):"
         tail -20 /config/logs/novnc.log 2>/dev/null || echo "(no log)"
         exit 1
     fi

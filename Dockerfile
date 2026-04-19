@@ -70,13 +70,28 @@ LABEL org.opencontainers.image.licenses=MIT
 #   - websockify: WebSocket→TCP proxy — bridges noVNC to TigerVNC
 #   Architecture: TigerVNC(:1/5901) → websockify+noVNC(7860) → browser
 #   This is the proven approach used by openclaw_computer on ModelScope.
+#
+# Missing KDE/Qt dependencies (fixes QML module errors):
+#   - qml-module-org-kde-kitemmodels: fixes "module org.kde.kitemmodels is not installed"
+#   - kwin-x11: window manager (kde-plasma-desktop doesn't pull it in on Debian 12)
+#   - kde-plasma-workspace: complete plasma workspace (fixes activity manager, etc.)
+#   - Various QML modules for system tray, notifications, etc.
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc cmake \
     python3 python3-pip python3-venv python3-dev \
     libffi-dev libolm-dev \
     ripgrep ffmpeg procps curl git \
-    kde-plasma-desktop konsole kwrite dolphin \
+    kde-plasma-desktop kde-plasma-workspace kwin-x11 konsole kwrite dolphin \
+    qml-module-org-kde-kitemmodels \
+    qml-module-qt-labs-platform \
+    qml-module-qtquick-shapes \
+    qml-module-qtquick-layouts \
+    qml-module-qtquick-controls2 \
+    qml-module-qtquick-templates2 \
+    qml-module-qtgraphicaleffects \
+    plasma-workspace-widgets \
+    kde-standard \
     fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 fcitx5-frontend-qt5 fcitx5-config-qt \
     tigervnc-standalone-server novnc websockify \
     && rm -rf /var/lib/apt/lists/*
