@@ -69,15 +69,36 @@ else
     useradd -u ${PUID} -m -s /bin/bash abc 2>/dev/null || true
 fi
 
+# CRITICAL: /config must be writable by abc — KDE checks "write access to $HOME"
+# and will refuse to start with "No write access to $HOME directory" if not.
+# In cloud platforms (ModelScope), the overlay filesystem may not honor chown.
+# So we verify with a test write after chown.
+chown abc:abc /config 2>/dev/null || true
+chown -R abc:abc /config/.cache /config/.config /config/.vnc /config/.local 2>/dev/null || true
+
+# Verify /config is actually writable by abc
+if ! runuser -u abc -- test -w /config; then
+    echo "[entrypoint-cloud] WARNING: /config not writable by abc (overlay FS restriction?)"
+    echo "[entrypoint-cloud] Trying chmod 777 /config as workaround..."
+    chmod 777 /config 2>/dev/null || true
+fi
+# Final verification
+if runuser -u abc -- test -w /config; then
+    echo "[entrypoint-cloud] /config is writable by abc ✓"
+else
+    echo "[entrypoint-cloud] ERROR: /config still not writable by abc! KDE will not start."
+fi
+
+# Also make /defaults accessible to abc (fixes "Failed to create secure directory (/defaults)")
+# gnome-keyring-daemon and other components may try to access this path
+chmod 755 /defaults 2>/dev/null || true
+
 # Fix XDG_RUNTIME_DIR ownership (critical — prevents "not owned by UID" errors)
 mkdir -p /run/user/${PUID}
 chown abc:abc /run/user/${PUID}
 chmod 700 /run/user/${PUID}
 
-# Fix config directory ownership
-chown -R abc:abc /config/.cache /config/.config /config/.vnc /config/.local 2>/dev/null || true
-
-# Fix config directory ownership
+# Fix config subdirectory ownership
 mkdir -p /config/.cache/fontconfig
 chown -R abc:abc /config/.cache/fontconfig 2>/dev/null || true
 
@@ -187,6 +208,14 @@ fi
 
 echo "[entrypoint-cloud] Starting KDE Plasma as user abc (UID=${PUID})..."
 
+# Final check: if /config is still not writable by abc, set KDE_HOME_READONLY=1
+# as a last resort so KDE will start in read-only mode instead of refusing to start.
+KDE_HOME_READONLY_FLAG=""
+if ! runuser -u abc -- test -w /config; then
+    echo "[entrypoint-cloud] WARNING: /config still not writable, setting KDE_HOME_READONLY=1"
+    KDE_HOME_READONLY_FLAG="KDE_HOME_READONLY=1"
+fi
+
 # Ensure ICEauthority and Xauthority exist for abc
 touch /config/.ICEauthority /config/.Xauthority 2>/dev/null || true
 chown abc:abc /config/.ICEauthority /config/.Xauthority 2>/dev/null || true
@@ -226,6 +255,7 @@ if [ -x /tmp/startwm.sh ]; then
         QT_IM_MODULE=fcitx \
         XMODIFIERS=@im=fcitx \
         SDL_IM_MODULE=fcitx \
+        ${KDE_HOME_READONLY_FLAG} \
         /bin/bash /tmp/startwm.sh &
     DE_PID=$!
 else
@@ -241,6 +271,7 @@ else
         QT_IM_MODULE=fcitx \
         XMODIFIERS=@im=fcitx \
         SDL_IM_MODULE=fcitx \
+        ${KDE_HOME_READONLY_FLAG} \
         startplasma-x11 &
     DE_PID=$!
 fi
