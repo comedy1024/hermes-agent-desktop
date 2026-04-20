@@ -147,17 +147,23 @@ RUN WALLPAPER=/opt/hermes-wallpaper.png && \
     echo "[wallpaper] Installed to all KDE wallpaper locations"
 
 # Create Hermes desktop shortcuts
+# Remove OpenClaw desktop shortcuts from base image (we don't need them)
+RUN rm -f /root/Desktop/openclaw*.desktop /root/Desktop/OpenClaw*.desktop 2>/dev/null || true
+
+# Create our desktop shortcuts (说明文档 first — most important for new users)
 RUN mkdir -p /root/Desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8648\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
-        > /root/Desktop/hermes-webui.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' \
-        > /root/Desktop/hermes-welcome.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /root/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
-        > /root/Desktop/hermes-terminal.desktop && \
-    chmod +x /root/Desktop/hermes-*.desktop
+    printf '[Desktop Entry]\nType=Application\nName=📖 说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' \
+        > /root/Desktop/00-welcome.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=💬 Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8648\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
+        > /root/Desktop/01-webui.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=💻 Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /root/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
+        > /root/Desktop/02-terminal.desktop && \
+    chmod +x /root/Desktop/0*.desktop
 
 # Create KDE autostart entries
-RUN mkdir -p /root/.config/autostart && \
+# Remove OpenClaw autostart from base image
+RUN rm -f /root/.config/autostart/openclaw*.desktop /root/.config/autostart/OpenClaw*.desktop 2>/dev/null || true && \
+    mkdir -p /root/.config/autostart && \
     printf '[Desktop Entry]\nType=Application\nName=Open Hermes WebUI\nExec=bash -c "sleep 5 && xdg-open http://localhost:8648"\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \
         > /root/.config/autostart/hermes-webui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=Hermes Terminal\nExec=konsole --workdir /root/hermes-data -e hermes\nHidden=false\nX-GNOME-Autostart-enabled=true\n' \

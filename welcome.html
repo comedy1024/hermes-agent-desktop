@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>说明文档</title>
+    <title>Hermes Agent Desktop 使用帮助</title>
     <style>
         :root {
             --primary: #6C5CE7;
@@ -17,6 +17,7 @@
             --border: #2D2D44;
             --success: #00B894;
             --warning: #FDCB6E;
+            --danger: #FF6B6B;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -58,11 +59,12 @@
         .badge.cyan { border-color: var(--accent); color: var(--accent); }
         h2 {
             font-size: 1.4rem;
-            margin: 2rem 0 1rem;
+            margin: 2.5rem 0 1rem;
             padding-bottom: 0.5rem;
             border-bottom: 2px solid var(--primary);
             display: inline-block;
         }
+        h3 { margin: 1.5rem 0 0.5rem; color: var(--accent); }
         .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin: 1rem 0 2rem; }
         .card {
             background: var(--card);
@@ -92,6 +94,7 @@
             font-family: 'Courier New', monospace;
             font-size: 0.9rem;
             overflow-x: auto;
+            white-space: pre-wrap;
         }
         .cmd-block .prompt { color: var(--accent); }
         .cmd-block .cmd { color: var(--warning); }
@@ -106,6 +109,39 @@
             background: rgba(253, 203, 110, 0.1);
             border-left-color: var(--warning);
         }
+        .note.danger {
+            background: rgba(255, 107, 107, 0.1);
+            border-left-color: var(--danger);
+        }
+        .step {
+            display: flex;
+            gap: 1rem;
+            margin: 1rem 0;
+            align-items: flex-start;
+        }
+        .step-num {
+            flex-shrink: 0;
+            width: 2rem;
+            height: 2rem;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .step-content { flex: 1; }
+        .step-content p { color: var(--text-muted); margin-top: 0.25rem; }
+        .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+        .provider-item {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+        }
+        .provider-item .name { font-weight: 600; color: var(--text); }
+        .provider-item .key { font-family: monospace; color: var(--accent); font-size: 0.8rem; }
         .footer {
             text-align: center;
             padding: 2rem 0;
@@ -126,152 +162,197 @@
     <div class="badges">
         <span class="badge purple">Hermes Agent</span>
         <span class="badge cyan">Hermes WebUI</span>
-        <span class="badge">KasmVNC Desktop</span>
-        <span class="badge green">78 Skills</span>
+        <span class="badge green">noVNC Desktop</span>
     </div>
 </div>
 
+<!-- ⚡ 第一步：配置模型 -->
+<h2>🎯 第一步：配置 LLM 模型</h2>
+<div class="note danger">
+    ⚠️ 必须先配置 LLM 模型才能使用！否则 Hermes Agent 无法响应任何请求。
+</div>
+
+<div class="step">
+    <div class="step-num">1</div>
+    <div class="step-content">
+        <strong>选择 LLM 提供商并获取 API Key</strong>
+        <p>根据你要使用的模型，获取对应的 API Key：</p>
+    </div>
+</div>
+
+<div class="provider-grid">
+    <div class="provider-item">
+        <div class="name">🟢 OpenAI</div>
+        <div class="key">OPENAI_API_KEY</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🟣 Anthropic</div>
+        <div class="key">ANTHROPIC_API_KEY</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🔵 DeepSeek</div>
+        <div class="key">DEEPSEEK_API_KEY</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🟡 Google Gemini</div>
+        <div class="key">GOOGLE_API_KEY</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🟠 OpenRouter</div>
+        <div class="key">OPENROUTER_API_KEY</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🔴 智谱 GLM</div>
+        <div class="key">GLM_API_KEY</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🟤 Kimi</div>
+        <div class="key">KIMI_API_KEY</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">⚪ 本地 Ollama</div>
+        <div class="key">无需 Key</div>
+    </div>
+</div>
+
+<div class="step">
+    <div class="step-num">2</div>
+    <div class="step-content">
+        <strong>配置 API Key</strong>
+        <p>在容器终端中编辑配置文件：</p>
+    </div>
+</div>
+
+<div class="cmd-block">
+<span class="prompt">$</span> <span class="cmd">nano</span> /root/hermes-data/.env
+
+<span style="color:var(--text-muted)"># 添加你的 API Key（按需选择一个或多个）：</span>
+OPENAI_API_KEY=sk-xxx
+ANTHROPIC_API_KEY=sk-ant-xxx
+DEEPSEEK_API_KEY=sk-xxx
+GOOGLE_API_KEY=AIzaXXX
+
+<span style="color:var(--text-muted)"># ⚠️ 必须配置以下两项，否则 Gateway 拒绝所有请求：</span>
+API_SERVER_ENABLED=true
+GATEWAY_ALLOW_ALL_USERS=true</div>
+
+<div class="step">
+    <div class="step-num">3</div>
+    <div class="step-content">
+        <strong>重启 Gateway 并选择模型</strong>
+        <p>保存 .env 后，重启 Gateway 使配置生效：</p>
+    </div>
+</div>
+
+<div class="cmd-block">
+<span class="prompt">$</span> <span class="cmd">hermes</span> gateway restart
+
+<span style="color:var(--text-muted)"># 选择默认模型：</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> model
+
+<span style="color:var(--text-muted)"># 或通过 WebUI 配置（推荐）：</span>
+<span style="color:var(--text-muted)"># 打开 http://localhost:8648 → Settings → Model</span></div>
+
+<div class="note">
+    💡 <strong>中国用户注意</strong>：OpenRouter 对中国区禁用了 Google 的 API Key。如需使用 Google 模型，请直接配置 <code>GOOGLE_API_KEY</code>。推荐使用 DeepSeek 或智谱 GLM，国内访问速度快。
+</div>
+
 <!-- 快速入口 -->
-<h2>⚡ 快速入口</h2>
+<h2>⚡ 服务入口</h2>
 <div class="cards">
-    <a class="card" href="http://localhost:8787" target="_blank">
+    <a class="card" href="http://localhost:8648" target="_blank">
         <div class="icon">💬</div>
         <h3>Hermes WebUI</h3>
-        <p>Hermes Agent 的全功能 Web 界面：流式聊天、文件浏览器、Skill 管理、记忆编辑、语音输入、多主题</p>
-        <div class="url">http://localhost:8787</div>
+        <p>Web 管理界面：流式聊天、Skill 管理、记忆编辑、平台配置</p>
+        <div class="url">http://localhost:8648</div>
     </a>
-    <a class="card" href="http://localhost:3000" target="_blank">
-        <div class="icon">🖥️</div>
-        <h3>KasmVNC 桌面</h3>
-        <p>通过浏览器访问完整 Linux KDE 桌面环境，可运行终端、文件管理器等</p>
-        <div class="url">http://localhost:3000</div>
-    </a>
-    <a class="card" href="http://localhost:8642" target="_blank">
+    <a class="card" href="http://localhost:8642/v1" target="_blank">
         <div class="icon">🔌</div>
-        <h3>Hermes Gateway API</h3>
-        <p>OpenAI 兼容的 API 端点，由 WebUI 自动管理启停，支持聊天补全和工具调用</p>
-        <div class="url">http://localhost:8642</div>
+        <h3>Gateway API</h3>
+        <p>OpenAI 兼容 API 端点，供 WebUI 和外部调用</p>
+        <div class="url">http://localhost:8642/v1</div>
     </a>
 </div>
 
 <!-- 服务端口 -->
-<h2>📡 服务端口</h2>
+<h2>📡 端口说明</h2>
 <table>
     <thead><tr><th>端口</th><th>服务</th><th>说明</th></tr></thead>
     <tbody>
-        <tr><td><code>3000</code></td><td>KasmVNC</td><td>浏览器访问 Linux KDE 桌面（HTTP）</td></tr>
-        <tr><td><code>3001</code></td><td>KasmVNC</td><td>浏览器访问 Linux KDE 桌面（HTTPS）</td></tr>
-        <tr><td><code>8787</code></td><td>Hermes WebUI</td><td>Web 管理界面（聊天/配置/运维）</td></tr>
-        <tr><td><code>8642</code></td><td>Hermes Gateway</td><td>OpenAI 兼容 API（WebUI 自动管理）</td></tr>
+        <tr><td><code>7860</code></td><td>noVNC 桌面</td><td>浏览器访问 Linux KDE 桌面</td></tr>
+        <tr><td><code>8648</code></td><td>Hermes WebUI</td><td>Web 管理界面</td></tr>
+        <tr><td><code>8642</code></td><td>Hermes Gateway</td><td>OpenAI 兼容 API</td></tr>
     </tbody>
 </table>
 
-<!-- 快速开始 -->
-<h2>🎯 快速开始</h2>
-
-<h3>1. 配置 LLM 模型</h3>
-<div class="note">
-    首次使用需要在 WebUI 中配置 LLM API。打开 <a href="http://localhost:8787" style="color:var(--accent)">Hermes WebUI</a>，
-    进入 <strong>Profiles</strong> 面板，添加你的 LLM Provider（如 OpenAI、Anthropic、DeepSeek、本地 Ollama 等）。
-</div>
-
-<h3>2. 常用终端命令</h3>
+<!-- 常用命令 -->
+<h2>🔧 常用命令</h2>
 <div class="cmd-block">
-    <span class="prompt">$</span> <span class="cmd">hermes</span>              <span style="color:var(--text-muted)"># 启动交互式聊天 (TUI)</span><br>
-    <span class="prompt">$</span> <span class="cmd">hermes</span> gateway run   <span style="color:var(--text-muted)"># 手动启动 Gateway API</span><br>
-    <span class="prompt">$</span> <span class="cmd">hermes</span> --help          <span style="color:var(--text-muted)"># 查看所有命令</span><br>
-    <span class="prompt">$</span> <span class="cmd">hermes</span> skill list       <span style="color:var(--text-muted)"># 列出已安装的 Skills</span><br>
-    <span class="prompt">$</span> <span class="cmd">hermes</span> memory search "关键词" <span style="color:var(--text-muted)"># 搜索记忆</span>
-</div>
+<span class="prompt">$</span> <span class="cmd">hermes</span>              <span style="color:var(--text-muted)"># 启动交互式聊天 (TUI)</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> gateway run   <span style="color:var(--text-muted)"># 手动启动 Gateway API</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> model          <span style="color:var(--text-muted)"># 切换默认模型</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> setup           <span style="color:var(--text-muted)"># 交互式配置向导</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> --help          <span style="color:var(--text-muted)"># 查看所有命令</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> skill list       <span style="color:var(--text-muted)"># 列出已安装的 Skills</span></div>
 
-<h3>3. 配置文件位置</h3>
+<!-- 配置文件 -->
+<h2>📂 配置文件</h2>
 <table>
     <thead><tr><th>文件</th><th>路径</th><th>说明</th></tr></thead>
     <tbody>
-        <tr><td>环境变量</td><td><code>/config/hermes-data/.env</code></td><td>API Keys、模型配置</td></tr>
-        <tr><td>主配置</td><td><code>/config/hermes-data/config.yaml</code></td><td>Hermes Agent 配置</td></tr>
-        <tr><td>Soul</td><td><code>/config/hermes-data/SOUL.md</code></td><td>Agent 人格定义</td></tr>
-        <tr><td>Skills</td><td><code>/config/hermes-data/skills/</code></td><td>78 个预装技能</td></tr>
-        <tr><td>记忆</td><td><code>/config/hermes-data/memories/</code></td><td>对话记忆存储</td></tr>
-        <tr><td>会话</td><td><code>/config/hermes-data/sessions/</code></td><td>聊天会话历史</td></tr>
-        <tr><td>WebUI 状态</td><td><code>/config/hermes-data/.hermes/webui-mvp/</code></td><td>WebUI 配置与状态</td></tr>
+        <tr><td>环境变量</td><td><code>/root/hermes-data/.env</code></td><td>API Keys、Gateway 配置</td></tr>
+        <tr><td>主配置</td><td><code>/root/hermes-data/config.yaml</code></td><td>Hermes Agent 配置</td></tr>
+        <tr><td>Soul</td><td><code>/root/hermes-data/SOUL.md</code></td><td>Agent 人格定义</td></tr>
+        <tr><td>Skills</td><td><code>/root/hermes-data/skills/</code></td><td>技能库</td></tr>
+        <tr><td>记忆</td><td><code>/root/hermes-data/memories/</code></td><td>对话记忆存储</td></tr>
+        <tr><td>会话</td><td><code>/root/hermes-data/sessions/</code></td><td>聊天会话历史</td></tr>
     </tbody>
 </table>
 
-<!-- 常用操作 -->
-<h2>🔧 常用操作</h2>
+<!-- 常见问题 -->
+<h2>❓ 常见问题</h2>
 
-<h3>添加 MCP 扩展</h3>
+<h3>WebUI 显示"未连接"</h3>
 <div class="cmd-block">
-    <span style="color:var(--text-muted)"># 方式1：通过 WebUI → Profiles → MCP 配置</span><br>
-    <span style="color:var(--text-muted)"># 方式2：通过命令行</span><br>
-    <span class="prompt">$</span> <span class="cmd">hermes</span> mcp add my-server --command "npx my-mcp-server"
-</div>
+<span style="color:var(--text-muted)"># 检查 Gateway 是否在 8642 端口监听</span>
+<span class="prompt">$</span> <span class="cmd">curl</span> -s http://127.0.0.1:8642/health
 
-<h3>使用 Playwright 浏览器自动化</h3>
-<div class="cmd-block">
-    <span class="prompt">$</span> <span class="cmd">hermes</span><br>
-    <span class="prompt">></span> 请用浏览器打开 https://example.com 并截图
-</div>
+<span style="color:var(--text-muted)"># 如果无响应，检查 .env 中是否有以下配置：</span>
+<span class="prompt">$</span> <span class="cmd">grep</span> API_SERVER_ENABLED /root/hermes-data/.env
+<span class="prompt">$</span> <span class="cmd">grep</span> GATEWAY_ALLOW_ALL_USERS /root/hermes-data/.env
+
+<span style="color:var(--text-muted)"># 如果缺失，添加并重启：</span>
+<span class="prompt">$</span> <span class="cmd">echo</span> 'API_SERVER_ENABLED=true' >> /root/hermes-data/.env
+<span class="prompt">$</span> <span class="cmd">echo</span> 'GATEWAY_ALLOW_ALL_USERS=true' >> /root/hermes-data/.env
+<span class="prompt">$</span> <span class="cmd">hermes</span> gateway restart</div>
+
+<h3>切换模型失败</h3>
 <div class="note">
-    Playwright + Chromium 已预装，Hermes Agent 可以直接控制浏览器进行网页操作。
+    确认目标模型的 API Key 已在 <code>/root/hermes-data/.env</code> 中正确配置，且 <code>GATEWAY_ALLOW_ALL_USERS=true</code> 已设置。配置后执行 <code>hermes gateway restart</code>。
 </div>
 
-<h3>WhatsApp Bridge</h3>
-<div class="cmd-block">
-    <span class="prompt">$</span> <span class="cmd">cd</span> /opt/hermes/scripts/whatsapp-bridge<br>
-    <span class="prompt">$</span> <span class="cmd">npm</span> start<br>
-    <span style="color:var(--text-muted)"># 扫描二维码连接 WhatsApp</span>
-</div>
-
-<!-- 环境变量 -->
-<h2>⚙️ 环境变量</h2>
-<table>
-    <thead><tr><th>变量</th><th>默认值</th><th>说明</th></tr></thead>
-    <tbody>
-        <tr><td><code>HERMES_HOME</code></td><td><code>/config/hermes-data</code></td><td>数据存储目录</td></tr>
-        <tr><td><code>HERMES_WEBUI_PORT</code></td><td><code>8787</code></td><td>WebUI 服务端口</td></tr>
-        <tr><td><code>HERMES_WEBUI_PASSWORD</code></td><td>（空）</td><td>可选的 WebUI 访问密码</td></tr>
-        <tr><td><code>PASSWORD</code></td><td>（空）</td><td>桌面访问密码（webtop）</td></tr>
-        <tr><td><code>PYTHONUNBUFFERED</code></td><td><code>1</code></td><td>Python 输出无缓冲</td></tr>
-    </tbody>
-</table>
-
-<!-- 数据持久化 -->
-<h2>💾 数据持久化</h2>
-<div class="note warn">
-    ⚠️ 容器重启后 <code>/opt/data</code> 以外的数据会丢失。请将重要文件保存在 <code>/opt/data</code> 目录下，或挂载 Docker Volume。
-</div>
-<div class="cmd-block">
-    <span style="color:var(--text-muted)"># Docker 运行时挂载数据卷</span><br>
-    docker run -d -p 3000:3000 -p 3001:3001 -p 8787:8787 \<br>
-    &nbsp;&nbsp;-v hermes-data:/config \<br>
-    &nbsp;&nbsp;ghcr.io/comedy1024/hermes-agent-desktop:latest
-</div>
-
-<!-- 链接 -->
+<!-- 相关链接 -->
 <h2>🔗 相关链接</h2>
 <div class="cards">
     <a class="card" href="https://github.com/comedy1024/hermes-agent-desktop" target="_blank">
         <div class="icon">📦</div>
         <h3>GitHub 仓库</h3>
-        <p>源码、Issue 反馈、贡献指南</p>
+        <p>源码、Issue 反馈、Docker 部署文档</p>
     </a>
     <a class="card" href="https://github.com/NousResearch/hermes-agent" target="_blank">
         <div class="icon">🤖</div>
         <h3>Hermes Agent</h3>
-        <p>上游 AI Agent 框架（Python + Node.js）</p>
+        <p>上游 AI Agent 框架</p>
     </a>
-    <a class="card" href="https://github.com/nesquena/hermes-webui" target="_blank">
+    <a class="card" href="https://github.com/EKKOLearnAI/hermes-web-ui" target="_blank">
         <div class="icon">🎨</div>
         <h3>Hermes WebUI</h3>
-        <p>Hermes 官方社区 Web 管理界面</p>
+        <p>Web 管理界面上游</p>
     </a>
 </div>
 
 <div class="footer">
     <p>Hermes Agent Desktop · Built with ❤️ by <a href="https://github.com/comedy1024">comedy1024</a></p>
-    <p>Powered by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> + <a href="https://github.com/nesquena/hermes-webui">Hermes WebUI</a> + <a href="https://github.com/linuxserver/docker-webtop">LinuxServer Webtop (KDE)</a></p>
 </div>
 
 </body>
