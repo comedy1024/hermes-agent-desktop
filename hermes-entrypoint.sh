@@ -30,6 +30,21 @@ if [ ! -f "$HERMES_HOME/config.yaml" ] && [ -f "$HERMES_INSTALL/cli-config.yaml.
     echo "[hermes] Created config.yaml from template"
 fi
 
+# Ensure critical Gateway settings are enabled in .env
+# These are required for the WebUI to connect to the Gateway API.
+# We use grep+append (not sed) because the .env may have these lines
+# commented out with different comment styles or not present at all.
+if ! grep -q "^API_SERVER_ENABLED=" "$HERMES_HOME/.env" 2>/dev/null; then
+    echo "" >> "$HERMES_HOME/.env"
+    echo "# --- Hermes Agent Desktop: Gateway API Server (auto-configured) ---" >> "$HERMES_HOME/.env"
+    echo "API_SERVER_ENABLED=true" >> "$HERMES_HOME/.env"
+    echo "[hermes] Added API_SERVER_ENABLED=true to .env"
+fi
+if ! grep -q "^GATEWAY_ALLOW_ALL_USERS=" "$HERMES_HOME/.env" 2>/dev/null; then
+    echo "GATEWAY_ALLOW_ALL_USERS=true" >> "$HERMES_HOME/.env"
+    echo "[hermes] Added GATEWAY_ALLOW_ALL_USERS=true to .env"
+fi
+
 if [ ! -f "$HERMES_HOME/SOUL.md" ] && [ -f "$HERMES_INSTALL/docker/SOUL.md" ]; then
     cp "$HERMES_INSTALL/docker/SOUL.md" "$HERMES_HOME/SOUL.md"
     echo "[hermes] Created SOUL.md from template"

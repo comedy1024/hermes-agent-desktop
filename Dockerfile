@@ -108,6 +108,14 @@ ENV HERMES_BIN=/opt/hermes-venv/bin/hermes
 ENV HERMES_HOME=/root/hermes-data
 ENV NODE_ENV=production
 
+# ---- Gateway critical settings ----
+# API_SERVER_ENABLED=true: enables the HTTP API server platform on port 8642
+# Without this, Gateway starts but doesn't listen on any port ("No messaging platforms enabled")
+# GATEWAY_ALLOW_ALL_USERS=true: allows all users to access the Gateway
+# These can be overridden via docker run -e or .env file
+ENV API_SERVER_ENABLED=true
+ENV GATEWAY_ALLOW_ALL_USERS=true
+
 # ---- Copy custom configuration ----
 # Hermes entrypoint script (bootstrap + start services)
 # We don't rely on supervisord conf.d (may not be included in base image's
