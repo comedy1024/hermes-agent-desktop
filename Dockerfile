@@ -153,8 +153,13 @@ RUN WALLPAPER=/opt/hermes-wallpaper.png && \
     echo "[wallpaper] Installed to all KDE wallpaper locations"
 
 # Create Hermes desktop shortcuts
-# Remove OpenClaw desktop shortcuts from base image (we don't need them)
-RUN rm -f /root/Desktop/openclaw*.desktop /root/Desktop/OpenClaw*.desktop 2>/dev/null || true
+# Remove ALL OpenClaw artifacts from base image
+RUN rm -f /root/Desktop/openclaw*.desktop /root/Desktop/OpenClaw*.desktop \
+    /root/Desktop/*openclaw*.desktop /root/Desktop/*OpenClaw*.desktop \
+    /usr/share/applications/openclaw*.desktop /usr/share/applications/OpenClaw*.desktop 2>/dev/null || true && \
+    # Clean up any OpenClaw menu entries and icons
+    find /root/.local/share/applications -name "*openclaw*" -delete 2>/dev/null || true && \
+    find /root/.local/share/icons -name "*openclaw*" -delete 2>/dev/null || true
 
 # Copy token display script
 COPY show-webui-token.sh /opt/show-webui-token.sh
@@ -163,14 +168,20 @@ RUN chmod +x /opt/show-webui-token.sh && sed -i 's/\r$//' /opt/show-webui-token.
 # Copy token viewer desktop shortcut
 COPY show-token.desktop /root/Desktop/03-show-token.desktop
 
-# Create our desktop shortcuts (说明文档 first — most important for new users)
+# Create our desktop shortcuts (clean, organized order)
+# 00-welcome: Documentation (first for new users)
+# 01-webui: Web Interface
+# 02-terminal: CLI Terminal  
+# 03-show-token: Token Viewer
 RUN mkdir -p /root/Desktop && \
     printf '[Desktop Entry]\nType=Application\nName=📖 说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' \
         > /root/Desktop/00-welcome.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=💬 Hermes WebUI\nComment=Hermes Agent Web Interface\nExec=xdg-open http://localhost:8648\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
+    printf '[Desktop Entry]\nType=Application\nName=💬 Hermes WebUI\nComment=Web 管理界面\nExec=xdg-open http://localhost:8648\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
         > /root/Desktop/01-webui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=💻 Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /root/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
         > /root/Desktop/02-terminal.desktop && \
+    printf '[Desktop Entry]\nType=Application\nName=🔑 WebUI Token\nComment=查看登录令牌\nExec=/opt/show-webui-token.sh\nIcon=dialog-password\nTerminal=true\nCategories=Utility;\n' \
+        > /root/Desktop/03-show-token.desktop && \
     chmod +x /root/Desktop/0*.desktop
 
 # Create KDE autostart entries
