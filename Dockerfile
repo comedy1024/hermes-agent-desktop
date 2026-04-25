@@ -153,13 +153,20 @@ RUN WALLPAPER=/opt/hermes-wallpaper.png && \
     echo "[wallpaper] Installed to all KDE wallpaper locations"
 
 # Create Hermes desktop shortcuts
-# Remove ALL OpenClaw artifacts from base image
+# Remove ALL OpenClaw artifacts from base image (desktop + applications menu)
 RUN rm -f /root/Desktop/openclaw*.desktop /root/Desktop/OpenClaw*.desktop \
     /root/Desktop/*openclaw*.desktop /root/Desktop/*OpenClaw*.desktop \
-    /usr/share/applications/openclaw*.desktop /usr/share/applications/OpenClaw*.desktop 2>/dev/null || true && \
-    # Clean up any OpenClaw menu entries and icons
-    find /root/.local/share/applications -name "*openclaw*" -delete 2>/dev/null || true && \
-    find /root/.local/share/icons -name "*openclaw*" -delete 2>/dev/null || true
+    /usr/share/applications/openclaw*.desktop /usr/share/applications/OpenClaw*.desktop \
+    /usr/share/applications/kde4/openclaw*.desktop /usr/share/applications/kde4/OpenClaw*.desktop \
+    /usr/share/menu/openclaw* /usr/share/menu/OpenClaw* \
+    2>/dev/null || true && \
+    # Clean up user-specific menu entries and icons
+    find /root/.local/share/applications -iname "*openclaw*" -delete 2>/dev/null || true && \
+    find /root/.local/share/icons -iname "*openclaw*" -delete 2>/dev/null || true && \
+    find /usr/share/pixmaps -iname "*openclaw*" -delete 2>/dev/null || true && \
+    # Update desktop database to remove stale entries
+    update-desktop-database /usr/share/applications 2>/dev/null || true && \
+    update-desktop-database /root/.local/share/applications 2>/dev/null || true
 
 # Copy token display script
 COPY show-webui-token.sh /opt/show-webui-token.sh
