@@ -152,28 +152,38 @@ RUN WALLPAPER=/opt/hermes-wallpaper.png && \
         > /usr/share/wallpapers/hermes-agent-desktop/metadata.json && \
     echo "[wallpaper] Installed to all KDE wallpaper locations"
 
-# Create Hermes desktop shortcuts
-# Remove ALL OpenClaw artifacts from base image (desktop + applications menu)
-RUN rm -f /root/Desktop/openclaw*.desktop /root/Desktop/OpenClaw*.desktop \
-    /root/Desktop/*openclaw*.desktop /root/Desktop/*OpenClaw*.desktop \
-    /usr/share/applications/openclaw*.desktop /usr/share/applications/OpenClaw*.desktop \
-    /usr/share/applications/kde4/openclaw*.desktop /usr/share/applications/kde4/OpenClaw*.desktop \
-    /usr/share/menu/openclaw* /usr/share/menu/OpenClaw* \
-    2>/dev/null || true && \
-    # Clean up user-specific menu entries and icons
-    find /root/.local/share/applications -iname "*openclaw*" -delete 2>/dev/null || true && \
-    find /root/.local/share/icons -iname "*openclaw*" -delete 2>/dev/null || true && \
-    find /usr/share/pixmaps -iname "*openclaw*" -delete 2>/dev/null || true && \
-    # Update desktop database to remove stale entries
+# ================================================================
+# CLEANUP: Remove ALL OpenClaw artifacts from base image
+# ================================================================
+RUN echo "[cleanup] Starting OpenClaw removal..." && \
+    # 1. Uninstall OpenClaw package if exists
+    dpkg -r openclaw 2>/dev/null || apt-get remove --purge -y openclaw 2>/dev/null || true && \
+    # 2. Remove all desktop shortcuts (case insensitive)
+    rm -rf /root/Desktop/*openclaw* /root/Desktop/*OpenClaw* /root/Desktop/*OPENCLAW* 2>/dev/null || true && \
+    # 3. Remove system applications (all locations)
+    rm -rf /usr/share/applications/*openclaw* /usr/share/applications/*OpenClaw* 2>/dev/null || true && \
+    rm -rf /usr/share/applications/kde4/*openclaw* /usr/share/applications/kde4/*OpenClaw* 2>/dev/null || true && \
+    # 4. Remove menu entries
+    rm -rf /usr/share/menu/*openclaw* /usr/share/menu/*OpenClaw* 2>/dev/null || true && \
+    # 5. Remove icons (all sizes)
+    rm -rf /usr/share/icons/*openclaw* /usr/share/icons/*OpenClaw* 2>/dev/null || true && \
+    rm -rf /usr/share/pixmaps/*openclaw* /usr/share/pixmaps/*OpenClaw* 2>/dev/null || true && \
+    # 6. Remove user-specific files
+    rm -rf /root/.local/share/applications/*openclaw* /root/.local/share/applications/*OpenClaw* 2>/dev/null || true && \
+    rm -rf /root/.local/share/icons/*openclaw* /root/.local/share/icons/*OpenClaw* 2>/dev/null || true && \
+    # 7. Remove autostart entries
+    rm -rf /root/.config/autostart/*openclaw* /root/.config/autostart/*OpenClaw* 2>/dev/null || true && \
+    # 8. Remove any remaining OpenClaw directories
+    rm -rf /opt/openclaw* /opt/OpenClaw* 2>/dev/null || true && \
+    rm -rf /home/*/OpenClaw* 2>/dev/null || true && \
+    # 9. Update desktop database
     update-desktop-database /usr/share/applications 2>/dev/null || true && \
-    update-desktop-database /root/.local/share/applications 2>/dev/null || true
+    update-desktop-database /root/.local/share/applications 2>/dev/null || true && \
+    echo "[cleanup] OpenClaw removal complete"
 
 # Copy token display script
 COPY show-webui-token.sh /opt/show-webui-token.sh
 RUN chmod +x /opt/show-webui-token.sh && sed -i 's/\r$//' /opt/show-webui-token.sh
-
-# Copy token viewer desktop shortcut
-COPY show-token.desktop /root/Desktop/03-show-token.desktop
 
 # Create our desktop shortcuts (clean, organized order)
 # 00-welcome: Documentation (first for new users)
@@ -181,13 +191,16 @@ COPY show-token.desktop /root/Desktop/03-show-token.desktop
 # 02-terminal: CLI Terminal  
 # 03-show-token: Token Viewer
 RUN mkdir -p /root/Desktop && \
+    # First, ensure no duplicate shortcuts exist
+    rm -f /root/Desktop/*.desktop && \
+    # Create clean shortcuts
     printf '[Desktop Entry]\nType=Application\nName=📖 说明文档\nComment=Hermes Agent Desktop 使用帮助\nExec=xdg-open /opt/welcome.html\nIcon=help-about\nTerminal=false\nCategories=Documentation;\n' \
         > /root/Desktop/00-welcome.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=💬 Hermes WebUI\nComment=Web 管理界面\nExec=xdg-open http://localhost:8648\nIcon=web-browser\nTerminal=false\nCategories=Network;\n' \
         > /root/Desktop/01-webui.desktop && \
     printf '[Desktop Entry]\nType=Application\nName=💻 Hermes Terminal\nComment=Hermes Agent CLI\nExec=konsole --workdir /root/hermes-data -e hermes\nIcon=utilities-terminal\nTerminal=false\nCategories=System;\n' \
         > /root/Desktop/02-terminal.desktop && \
-    printf '[Desktop Entry]\nType=Application\nName=🔑 WebUI Token\nComment=查看登录令牌\nExec=/opt/show-webui-token.sh\nIcon=dialog-password\nTerminal=true\nCategories=Utility;\n' \
+    printf '[Desktop Entry]\nType=Application\nName=🔑 WebUI Token\nComment=查看登录令牌\nExec=bash -c "echo "WebUI Token:"; cat /root/.hermes-web-ui/.token 2>/dev/null || echo \"Token 文件不存在\"; read"\nIcon=dialog-password\nTerminal=true\nCategories=Utility;\n' \
         > /root/Desktop/03-show-token.desktop && \
     chmod +x /root/Desktop/0*.desktop
 
