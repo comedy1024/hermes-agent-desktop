@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=🔑 WebUI 登录 Token
+Comment=显示 Hermes WebUI 的登录令牌
+Exec=konsole --workdir /root --noclose -e bash -c "echo 'WebUI Token:'; cat /root/.hermes-web-ui/.token 2>/dev/null || echo 'Token 文件不存在，请先启动 WebUI'; echo ''; read -p '按 Enter 键关闭...'"
+Icon=dialog-password
+Terminal=false
+Categories=Utility;
+StartupNotify=false

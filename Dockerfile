@@ -116,6 +116,12 @@ ENV NODE_ENV=production
 ENV API_SERVER_ENABLED=true
 ENV GATEWAY_ALLOW_ALL_USERS=true
 
+# ---- WebUI authentication token ----
+# AUTH_TOKEN: fixed token for WebUI login (default auto-generated and persisted)
+# Set this to a fixed value to avoid token changes on Gateway/WebUI restart
+# If not set, WebUI auto-generates a random token and saves to ~/.hermes-web-ui/.token
+ENV AUTH_TOKEN=
+
 # ---- Copy custom configuration ----
 # Hermes entrypoint script (bootstrap + start services)
 # We don't rely on supervisord conf.d (may not be included in base image's
@@ -149,6 +155,13 @@ RUN WALLPAPER=/opt/hermes-wallpaper.png && \
 # Create Hermes desktop shortcuts
 # Remove OpenClaw desktop shortcuts from base image (we don't need them)
 RUN rm -f /root/Desktop/openclaw*.desktop /root/Desktop/OpenClaw*.desktop 2>/dev/null || true
+
+# Copy token display script
+COPY show-webui-token.sh /opt/show-webui-token.sh
+RUN chmod +x /opt/show-webui-token.sh && sed -i 's/\r$//' /opt/show-webui-token.sh
+
+# Copy token viewer desktop shortcut
+COPY show-token.desktop /root/Desktop/03-show-token.desktop
 
 # Create our desktop shortcuts (说明文档 first — most important for new users)
 RUN mkdir -p /root/Desktop && \

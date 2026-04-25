@@ -172,89 +172,103 @@
     ⚠️ 必须先配置 LLM 模型才能使用！否则 Hermes Agent 无法响应任何请求。
 </div>
 
-<div class="step">
-    <div class="step-num">1</div>
-    <div class="step-content">
-        <strong>选择 LLM 提供商并获取 API Key</strong>
-        <p>根据你要使用的模型，获取对应的 API Key：</p>
-    </div>
+<p>部署时需通过环境变量传入 API Key（详见 <a href="https://github.com/comedy1024/hermes-agent-desktop#配置-llm-模型" style="color:var(--accent)">GitHub README</a>）。进入系统后，有以下三种方式配置模型：</p>
+
+<h3>方式一：WebUI 配置（推荐）</h3>
+<p>打开 Hermes WebUI，在设置中切换模型和提供商：</p>
+
+<div class="cmd-block">
+<span style="color:var(--text-muted)"># 浏览器打开 WebUI：</span>
+http://localhost:8648
+
+<span style="color:var(--text-muted)"># 进入 Settings → Model → 选择提供商和模型</span></div>
+
+<div class="note">
+    💡 WebUI 通过 Gateway API 代理所有请求，切换模型后即时生效，无需重启。
 </div>
 
+<h3>方式二：hermes 命令行</h3>
+
+<div class="cmd-block">
+<span style="color:var(--text-muted)"># 交互式选择默认模型（列出所有可用模型）：</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> model
+
+<span style="color:var(--text-muted)"># 完整的交互式配置向导（API Key + 模型 + 平台）：</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> setup
+
+<span style="color:var(--text-muted)"># 指定模型运行单次对话：</span>
+<span class="prompt">$</span> <span class="cmd">hermes</span> --model anthropic/claude-sonnet-4</div>
+
+<h3>方式三：编辑 config.yaml</h3>
+<p>直接修改配置文件，适合高级用户或自动化场景：</p>
+
+<div class="cmd-block">
+<span class="prompt">$</span> <span class="cmd">nano</span> /root/hermes-data/config.yaml
+
+<span style="color:var(--text-muted)"># 核心配置项：</span>
+model:
+  default: "anthropic/claude-opus-4.6"   <span style="color:var(--text-muted)"># 默认模型</span>
+  provider: "auto"                        <span style="color:var(--text-muted)"># 推理提供商（auto 自动检测）</span>
+  # base_url: "https://openrouter.ai/api/v1"  <span style="color:var(--text-muted)"># 自定义 API 端点</span></div>
+
+<h3>支持的 Provider</h3>
 <div class="provider-grid">
     <div class="provider-item">
-        <div class="name">🟢 OpenAI</div>
-        <div class="key">OPENAI_API_KEY</div>
+        <div class="name">🟠 OpenRouter</div>
+        <div class="key">openrouter</div>
     </div>
     <div class="provider-item">
         <div class="name">🟣 Anthropic</div>
-        <div class="key">ANTHROPIC_API_KEY</div>
-    </div>
-    <div class="provider-item">
-        <div class="name">🔵 DeepSeek</div>
-        <div class="key">DEEPSEEK_API_KEY</div>
+        <div class="key">anthropic</div>
     </div>
     <div class="provider-item">
         <div class="name">🟡 Google Gemini</div>
-        <div class="key">GOOGLE_API_KEY</div>
-    </div>
-    <div class="provider-item">
-        <div class="name">🟠 OpenRouter</div>
-        <div class="key">OPENROUTER_API_KEY</div>
+        <div class="key">gemini</div>
     </div>
     <div class="provider-item">
         <div class="name">🔴 智谱 GLM</div>
-        <div class="key">GLM_API_KEY</div>
+        <div class="key">zai</div>
     </div>
     <div class="provider-item">
         <div class="name">🟤 Kimi</div>
-        <div class="key">KIMI_API_KEY</div>
+        <div class="key">kimi-coding</div>
     </div>
     <div class="provider-item">
-        <div class="name">⚪ 本地 Ollama</div>
-        <div class="key">无需 Key</div>
+        <div class="name">🔵 MiniMax</div>
+        <div class="key">minimax</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🤗 Hugging Face</div>
+        <div class="key">huggingface</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">☁️ Ollama Cloud</div>
+        <div class="key">ollama-cloud</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">⚡ Nous Portal</div>
+        <div class="key">nous</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🐙 GitHub Copilot</div>
+        <div class="key">copilot</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">🖥️ NVIDIA NIM</div>
+        <div class="key">nvidia</div>
+    </div>
+    <div class="provider-item">
+        <div class="name">⚙️ 自定义端点</div>
+        <div class="key">custom</div>
     </div>
 </div>
-
-<div class="step">
-    <div class="step-num">2</div>
-    <div class="step-content">
-        <strong>配置 API Key</strong>
-        <p>在容器终端中编辑配置文件：</p>
-    </div>
-</div>
-
-<div class="cmd-block">
-<span class="prompt">$</span> <span class="cmd">nano</span> /root/hermes-data/.env
-
-<span style="color:var(--text-muted)"># 添加你的 API Key（按需选择一个或多个）：</span>
-OPENAI_API_KEY=sk-xxx
-ANTHROPIC_API_KEY=sk-ant-xxx
-DEEPSEEK_API_KEY=sk-xxx
-GOOGLE_API_KEY=AIzaXXX
-
-<span style="color:var(--text-muted)"># ⚠️ 必须配置以下两项，否则 Gateway 拒绝所有请求：</span>
-API_SERVER_ENABLED=true
-GATEWAY_ALLOW_ALL_USERS=true</div>
-
-<div class="step">
-    <div class="step-num">3</div>
-    <div class="step-content">
-        <strong>重启 Gateway 并选择模型</strong>
-        <p>保存 .env 后，重启 Gateway 使配置生效：</p>
-    </div>
-</div>
-
-<div class="cmd-block">
-<span class="prompt">$</span> <span class="cmd">hermes</span> gateway restart
-
-<span style="color:var(--text-muted)"># 选择默认模型：</span>
-<span class="prompt">$</span> <span class="cmd">hermes</span> model
-
-<span style="color:var(--text-muted)"># 或通过 WebUI 配置（推荐）：</span>
-<span style="color:var(--text-muted)"># 打开 http://localhost:8648 → Settings → Model</span></div>
 
 <div class="note">
-    💡 <strong>中国用户注意</strong>：OpenRouter 对中国区禁用了 Google 的 API Key。如需使用 Google 模型，请直接配置 <code>GOOGLE_API_KEY</code>。推荐使用 DeepSeek 或智谱 GLM，国内访问速度快。
+    💡 <strong>提示</strong>：Provider 设为 <code>auto</code>（默认）时，Hermes 会根据已配置的 API Key 自动选择。配置 Key 后切换模型只需 <code>hermes model</code> 或在 WebUI 中操作。详见 <a href="https://github.com/comedy1024/hermes-agent-desktop#配置-llm-模型" style="color:var(--accent)">GitHub README</a> 中的 API Key 配置说明。
+</div>
+
+<div class="note warn">
+    ⚠️ <strong>中国用户</strong>：OpenRouter 对中国区禁用了 Google 的 API Key。如需使用 Google 模型，请在 <code>/root/hermes-data/.env</code> 中直接配置 <code>GOOGLE_API_KEY</code>。推荐使用 DeepSeek 或智谱 GLM，国内访问速度快。
 </div>
 
 <!-- 快速入口 -->
@@ -272,6 +286,19 @@ GATEWAY_ALLOW_ALL_USERS=true</div>
         <p>OpenAI 兼容 API 端点，供 WebUI 和外部调用</p>
         <div class="url">http://localhost:8642/v1</div>
     </a>
+</div>
+
+<div class="note">
+    🔑 <strong>WebUI 登录 Token</strong>：首次访问 WebUI 需要输入认证 Token。Token 在容器启动时自动生成并持久化保存，可通过以下方式查看：
+    <div class="cmd-block" style="margin-top:0.5rem">
+<span style="color:var(--text-muted)"># 方式一：桌面快捷方式（推荐）</span>
+双击桌面上的 "🔑 WebUI 登录 Token" 图标
+
+<span style="color:var(--text-muted)"># 方式二：终端命令</span>
+<span class="prompt">$</span> <span class="cmd">cat</span> /root/.hermes-web-ui/.token
+
+<span style="color:var(--text-muted)"># 方式三：容器启动日志</span>
+启动时会在控制台输出 Token 信息</div>
 </div>
 
 <!-- 服务端口 -->
@@ -314,21 +341,21 @@ GATEWAY_ALLOW_ALL_USERS=true</div>
 
 <h3>WebUI 显示"未连接"</h3>
 <div class="cmd-block">
-<span style="color:var(--text-muted)"># 检查 Gateway 是否在 8642 端口监听</span>
+<span style="color:var(--text-muted)"># 1. 检查 Gateway 是否在运行并监听 8642 端口：</span>
 <span class="prompt">$</span> <span class="cmd">curl</span> -s http://127.0.0.1:8642/health
 
-<span style="color:var(--text-muted)"># 如果无响应，检查 .env 中是否有以下配置：</span>
-<span class="prompt">$</span> <span class="cmd">grep</span> API_SERVER_ENABLED /root/hermes-data/.env
-<span class="prompt">$</span> <span class="cmd">grep</span> GATEWAY_ALLOW_ALL_USERS /root/hermes-data/.env
+<span style="color:var(--text-muted)"># 2. 如果无响应，查看 Gateway 进程：</span>
+<span class="prompt">$</span> <span class="cmd">ps</span> aux | grep hermes
 
-<span style="color:var(--text-muted)"># 如果缺失，添加并重启：</span>
-<span class="prompt">$</span> <span class="cmd">echo</span> 'API_SERVER_ENABLED=true' >> /root/hermes-data/.env
-<span class="prompt">$</span> <span class="cmd">echo</span> 'GATEWAY_ALLOW_ALL_USERS=true' >> /root/hermes-data/.env
+<span style="color:var(--text-muted)"># 3. 重启 Gateway：</span>
 <span class="prompt">$</span> <span class="cmd">hermes</span> gateway restart</div>
+<div class="note">
+    WebUI "未连接"通常意味着 Gateway 未启动或 API Key 未配置。确保部署时已传入 API Key 环境变量，详见 <a href="https://github.com/comedy1024/hermes-agent-desktop#配置-llm-模型" style="color:var(--accent)">GitHub README</a>。
+</div>
 
 <h3>切换模型失败</h3>
 <div class="note">
-    确认目标模型的 API Key 已在 <code>/root/hermes-data/.env</code> 中正确配置，且 <code>GATEWAY_ALLOW_ALL_USERS=true</code> 已设置。配置后执行 <code>hermes gateway restart</code>。
+    在 WebUI Settings → Model 中切换模型时失败，通常是 API Key 未配置或无效。使用 <code>hermes model</code> 命令查看当前可用的模型列表，或检查 <code>/root/hermes-data/.env</code> 中的 API Key 是否正确。
 </div>
 
 <!-- 相关链接 -->

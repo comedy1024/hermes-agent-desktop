@@ -19,6 +19,11 @@ HERMES_INSTALL="/opt/hermes"
 mkdir -p "$HERMES_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
 mkdir -p "$HERMES_HOME/.hermes/webui-mvp"
 
+# Ensure WebUI token directory exists (for persistent auth token)
+# The WebUI stores its auth token at ~/.hermes-web-ui/.token
+# We create it here so it persists across container restarts
+mkdir -p /root/.hermes-web-ui
+
 # Copy config templates if they don't exist
 if [ ! -f "$HERMES_HOME/.env" ] && [ -f "$HERMES_INSTALL/.env.example" ]; then
     cp "$HERMES_INSTALL/.env.example" "$HERMES_HOME/.env"
@@ -68,6 +73,33 @@ if [ -f "$PLASMA_RC" ]; then
     WALLPAPER_PATH="file:///usr/share/wallpapers/hermes-agent-desktop/contents/images/1920x1080.png"
     sed -i "s|^Image=.*|Image=${WALLPAPER_PATH}|g" "$PLASMA_RC" 2>/dev/null || true
     sed -i "s|^wallpaperplugin=.*|wallpaperplugin=org.kde.image|g" "$PLASMA_RC" 2>/dev/null || true
+fi
+
+# ---- WebUI Token Management ----
+# Ensure a persistent auth token exists for WebUI login
+# Priority: 1) AUTH_TOKEN env var (from Dockerfile/运行时) 2) Existing file 3) Generate new
+TOKEN_FILE="/root/.hermes-web-ui/.token"
+if [ -z "$AUTH_TOKEN" ]; then
+    # No env var provided, check if we already have a saved token
+    if [ -f "$TOKEN_FILE" ]; then
+        AUTH_TOKEN=$(cat "$TOKEN_FILE" | tr -d '\n')
+        echo "[hermes] Loaded WebUI token from $TOKEN_FILE"
+    else
+        # Generate a new secure token (32 random bytes = 64 hex chars)
+        AUTH_TOKEN=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" 2>/dev/null || openssl rand -hex 32)
+        echo "[hermes] Generated new WebUI token"
+    fi
+    # Save token to file for persistence across restarts
+    echo "$AUTH_TOKEN" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
+    # Export for child processes (WebUI server)
+    export AUTH_TOKEN
+    echo "[hermes] Token saved to $TOKEN_FILE"
+else
+    # AUTH_TOKEN provided via environment, save it for display purposes
+    echo "$AUTH_TOKEN" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
+    echo "[hermes] Using provided AUTH_TOKEN from environment"
 fi
 
 echo "[hermes] Bootstrap complete"

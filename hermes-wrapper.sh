@@ -44,6 +44,7 @@ echo "[hermes-wrapper] Starting Hermes WebUI on port 8648..."
         UPSTREAM=http://127.0.0.1:8642 \
         HERMES_BIN=/opt/hermes-venv/bin/hermes \
         HERMES_HOME=/root/hermes-data \
+        AUTH_TOKEN=${AUTH_TOKEN} \
         NODE_ENV=production \
         node dist/server/index.js
         RET=$?
@@ -54,13 +55,28 @@ echo "[hermes-wrapper] Starting Hermes WebUI on port 8648..."
 WEBUI_PID=$!
 echo "[hermes-wrapper] Hermes WebUI started (PID=$WEBUI_PID)"
 
-echo ""
-echo "=========================================="
-echo "  Hermes Agent Desktop 已启动！"
-echo "  桌面访问: http://0.0.0.0:7860"
-echo "  Hermes WebUI: http://localhost:8648"
-echo "  Hermes Gateway: http://localhost:8642"
-echo "=========================================="
+# ---- Display WebUI token for user convenience ----
+TOKEN_FILE="/root/.hermes-web-ui/.token"
+if [ -f "$TOKEN_FILE" ]; then
+    CURRENT_TOKEN=$(cat "$TOKEN_FILE" | tr -d '\n')
+    echo ""
+    echo "=========================================="
+    echo "  🔑 WebUI 登录 Token:"
+    echo "  $CURRENT_TOKEN"
+    echo "=========================================="
+    echo "  桌面访问: http://0.0.0.0:7860"
+    echo "  Hermes WebUI: http://localhost:8648"
+    echo "  Hermes Gateway: http://localhost:8642"
+    echo "=========================================="
+else
+    echo ""
+    echo "=========================================="
+    echo "  Hermes Agent Desktop 已启动！"
+    echo "  桌面访问: http://0.0.0.0:7860"
+    echo "  Hermes WebUI: http://localhost:8648"
+    echo "  Hermes Gateway: http://localhost:8642"
+    echo "=========================================="
+fi
 
 # ---- Hand off to the original openclaw_computer entrypoint ----
 # This starts supervisord which manages: VNC, KDE, OpenClaw, etc.
